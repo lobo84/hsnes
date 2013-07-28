@@ -1,16 +1,20 @@
+module Cpu where
+
 import Data.Bits
 import Control.Monad.Error
 import Data.List
 import Data.Maybe
 import Data.Word
 import Test.QuickCheck
+import Numeric(showHex)
+import qualified Data.Map as M
 
 data Cpu = Cpu {
   memory :: Memory,
   registers :: Registers  
 } deriving Show
 
-type RegValue = Word8
+type RegValue = Int
 
 data Flag = Carry
           |Zero
@@ -26,19 +30,20 @@ data Registers = Registers {
   status :: RegValue,
   acc :: RegValue,
   x :: RegValue,
-  y :: RegValue
+  y :: RegValue,
+  sp :: RegValue
 } deriving Show
 
-data RegisterType = Pc | Status | Acc | X | Y
+data RegisterType = Pc | Status | Acc | X | Y | Sp deriving Eq
 
-type OpCode = Word8       
-type Memory = [(Word16,Word8)]
-type AddressingMode = Cpu -> Word8
+type OpCode = Int       
+type Memory = M.Map Int Int
+type AddressingMode = Cpu -> Int
 type AccFuncTwoArg = RegValue -> RegValue -> RegValue
 type AccFuncOneArg = RegValue -> RegValue
-type OpSize = Word8
-type Address = Word16
-type MemEntry = Word8
+type OpSize = Int
+type Address = Int
+type MemEntry = Int
 type BitPos = Int
 
 flagPos :: Flag -> Int
@@ -51,11 +56,12 @@ flagPos Unused = 5
 flagPos OverFlow = 6
 flagPos Neg = 7
 
-readMem :: Num a => a -> Memory -> Word8
-readMem addr mem = 0
-
-writeMem :: Num a => a -> Word8 -> Memory -> Memory
-writeMem address value mem = error "not implemented"
+readMem :: Int -> Memory -> Int
+readMem addr mem | M.member addr mem == True = (M.!) mem addr
+                 | M.member addr mem == False = 0
+  
+writeMem :: Int -> Int -> Memory -> Memory
+writeMem address value mem = (M.insert) address value mem
 
 updateFlags :: [(Flag,Bool)] -> RegValue -> RegValue
 updateFlags ((f,v):vs) regValue = updateFlags vs (updateFlag f v regValue)
@@ -64,6 +70,11 @@ updateFlags [] r = r
 updateFlag :: Flag -> Bool -> RegValue -> RegValue
 updateFlag flag True regValue = setBit regValue (flagPos flag)
 updateFlag flag False regValue = clearBit regValue (flagPos flag)
+
+resetVector :: Int
+resetVector = 0xFFFC
+stackStart = 0x100
+stackEnd = 0x1FF
 
 updateRegister :: RegisterType -> RegValue -> Registers -> Registers
 updateRegister Pc value regs = regs{pc=value} 
@@ -92,66 +103,67 @@ sec = updateFlagOp Carry True
 sed = updateFlagOp DecMode True
 sei = updateFlagOp IrqDis True
 
-isOverflow :: Word8 -> Word8 -> Bool
+isOverflow :: Int -> Int -> Bool
 isOverflow a b = abSum > 255
   where abSum = (fromIntegral(a)::Int) + (fromIntegral(b)::Int)
 
-fstArg :: Cpu -> Word8
+fstArg :: Cpu -> Int
 fstArg (Cpu mem regs) = readMem (pc(regs)+1) mem
 
-secArg :: Cpu -> Word8
+secArg :: Cpu -> Int
 secArg (Cpu mem regs) = readMem (pc(regs)+2) mem
 
-immediateArg :: Cpu -> Word8
+immediateArg :: Cpu -> Int
 immediateArg = fstArg
 
-absoluteArg :: Cpu -> Word8
-absoluteArg cpu@(Cpu mem regs) = readMem address mem
-  where address = args16Address cpu
+absoluteArg :: Cpu -> Int
+absoluteArg cpu@(Cpu mem regs) = args16Address cpu
         
 args16Address :: Cpu -> Address
-args16Address cpu = toAddress (fstArg(cpu)) (secArg(cpu))
+args16Address cpu = toAddress (secArg(cpu)) (fstArg(cpu))
 
 args8Address :: Cpu -> Address
 args8Address cpu = toAddress (fstArg(cpu)) (secArg(cpu))
 
-absoluteXarg :: Cpu -> Word8
+absoluteXarg :: Cpu -> Int
 absoluteXarg cpu@(Cpu mem regs) = absoluteRegArg (x(regs)) (args16Address cpu) cpu
 
-absoluteYarg :: Cpu -> Word8
+absoluteYarg :: Cpu -> Int
 absoluteYarg cpu@(Cpu mem regs) = absoluteRegArg (y(regs)) (args16Address cpu) cpu
 
-add :: Word8 -> Word16 -> Word16
-add a b = (fromIntegral(a)::Word16) + b
+add :: Int -> Int -> Int
+add a b = (fromIntegral(a)::Int) + b
 
-absoluteRegArg :: RegValue -> Address -> Cpu -> Word8
+absoluteRegArg :: RegValue -> Address -> Cpu -> Int
 absoluteRegArg regValue address cpu@(Cpu mem regs) = readMem (add regValue address) mem
 
-zeroPageArg :: Cpu -> Word8
+zeroPageArg :: Cpu -> Int
 zeroPageArg cpu = absoluteRegArg 0 (args8Address cpu) cpu
 
-zeroPageXArg :: Cpu -> Word8
+zeroPageXArg :: Cpu -> Int
 zeroPageXArg cpu@(Cpu mem regs) = absoluteRegArg (x(regs)) (args8Address cpu) cpu
 
-zeroPageYArg :: Cpu -> Word8
+zeroPageYArg :: Cpu -> Int
 zeroPageYArg cpu@(Cpu mem regs) = absoluteRegArg (y(regs)) (args8Address cpu) cpu
 
-accumulatorArg :: Cpu -> Word8
+accumulatorArg :: Cpu -> Int
 accumulatorArg (Cpu _ regs) = acc(regs)
 
-indirectXarg :: Cpu -> Word8
+indirectXarg :: Cpu -> Int
 indirectXarg cpu = error "not implemented"
 
-indirectYarg :: Cpu -> Word8
+indirectYarg :: Cpu -> Int
 indirectYarg cpu = error "not implemented"
 
-toAddress :: Word8 -> Word8 -> Word16
-toAddress a b = (Data.Bits..|.) a b
-  where a = shift (fromIntegral(a)::Word16) 8
-        b = fromIntegral(b)::Word16
+toAddress :: Int -> Int -> Int
+toAddress a b = (Data.Bits..|.) (Data.Bits.shiftL a 8) b
 
-updateStatusFlagsAccOp :: RegValue -> RegValue -> RegValue
-updateStatusFlagsAccOp currentStatus newAcc = newStatus
+        
+add8 :: Int -> Int -> Int
+add8 a b = mod (a + b) 256
+
+updateStatusFlagsNumericOp :: RegValue -> RegValue -> RegValue
+updateStatusFlagsNumericOp currentStatus newAcc = newStatus
   where newStatus = updateFlags [(Zero,zeroFlag),
                                  (Neg,negFlag)] currentStatus
         zeroFlag = newAcc == 0
@@ -160,11 +172,11 @@ updateStatusFlagsAccOp currentStatus newAcc = newStatus
 adcOp :: AddressingMode -> OpSize -> Cpu -> Cpu
 adcOp f size cpu@(Cpu mem regs) = Cpu mem newRegs
   where newRegs = regs {acc=newAcc, pc=newPc, status=newStatus}
-        newAcc = acc1 + acc2 
+        newAcc = add8 acc1 acc2 
         acc1 = acc(regs)
         acc2 = f cpu
         newPc = pc(regs) + size
-        newAccStatus = updateStatusFlagsAccOp (status(regs)) newAcc        
+        newAccStatus = updateStatusFlagsNumericOp (status(regs)) newAcc        
         newStatus = updateFlag Carry carryFlag newAccStatus
         carryFlag = isOverflow acc1 acc2
 
@@ -173,7 +185,7 @@ ldOp rType f size cpu@(Cpu mem regs) = Cpu mem newRegs
   where newRegs = updateRegisters [(rType,newR), (Pc,newPc), (Status,newStatus)] regs
         newR = f cpu
         newPc = pc(regs) + size
-        newStatus = updateStatusFlagsAccOp (status(regs)) newR        
+        newStatus = updateStatusFlagsNumericOp (status(regs)) newR        
 
 stOp ::  RegisterType -> AddressingMode -> OpSize -> Cpu -> Cpu
 stOp rType f size cpu@(Cpu mem regs) = Cpu newMem newRegs
@@ -189,17 +201,25 @@ bitOp aluOp f size cpu@(Cpu mem regs) = Cpu mem newRegs
         acc1 = acc(regs)
         acc2 = f cpu
         newPc = pc(regs) + size
-        newStatus = updateStatusFlagsAccOp (status(regs)) newAcc
+        newStatus = updateStatusFlagsNumericOp (status(regs)) newAcc
 
 shiftOp :: AccFuncOneArg -> BitPos -> AddressingMode -> OpSize -> Cpu -> Cpu
 shiftOp aluOp bitPos f size cpu@(Cpu mem regs) = Cpu mem newRegs
   where newRegs = regs {acc=newAcc, pc=newPc, status=newStatus}
         newAcc = aluOp (f cpu)
         newPc = pc(regs) + size
-        newAccStatus = updateStatusFlagsAccOp (status(regs)) newAcc        
+        newAccStatus = updateStatusFlagsNumericOp (status(regs)) newAcc        
         newStatus = updateFlag Carry carryFlag newAccStatus
         carryFlag = testBit (acc(regs)) bitPos
 
+transferOp :: RegisterType -> RegisterType -> OpSize -> Cpu -> Cpu
+transferOp from to size (Cpu mem regs) = Cpu mem newRegs
+  where newRegs = updateRegisters [(to, fromValue), 
+                                (Pc,pc(regs) + size),
+                                (Status, newStatus)] regs
+        fromValue = readRegister from regs
+        newStatus = updateStatusFlagsNumericOp (status(regs)) fromValue
+        
 andOp :: AddressingMode -> OpSize -> Cpu -> Cpu
 andOp = bitOp (Data.Bits..&.)
 
@@ -221,12 +241,37 @@ rolOp = shiftOp ((flip rotateL) 1) 7
 rorOp :: AddressingMode -> OpSize -> Cpu -> Cpu
 rorOp = shiftOp ((flip rotateR) 1) 0
 
+pushOp :: RegisterType -> OpSize -> Cpu -> Cpu
+pushOp regType size cpu@(Cpu mem regs) = pushToStack regValue cpu
+  where regValue = readRegister regType regs
 
+pullOp :: RegisterType -> OpSize -> Cpu -> Cpu
+pullOp regType size (Cpu mem regs) = Cpu mem newRegs
+  where newRegs = updateRegisters [(regType,fromStack),
+                                   (Sp,sp(regs)-1),
+                                   (Status, newStatus)] regs
+        fromStack = readMem (sp(regs)) mem
+        newStatus = if regType == Status 
+                    then fromStack 
+                    else updateStatusFlagsNumericOp (status(regs)) fromStack
+                         
+jsrOp :: AddressingMode -> OpSize -> Cpu -> Cpu                         
+jsrOp f size cpu@(Cpu mem regs) = pushToStack returnPoint cpu
+  where returnPoint = pc(regs)+1
+        
+  
+pushToStack :: Int -> Cpu -> Cpu                                     
+pushToStack value (Cpu mem regs) = Cpu newMem newRegs
+  where newMem = writeMem spValue value mem
+        spValue = sp(regs)
+        newRegs = updateRegister Sp (spValue+1) regs
+
+  
 updateFlagOp :: Flag -> Bool -> Cpu -> Cpu
 updateFlagOp flag value cpu = Cpu (memory(cpu)) newRegs
   where regs = registers(cpu) 
         newRegs = (regs {pc = pc(regs)+1, status = statusValue})
-        statusValue = updateFlag flag value (status(regs)) 
+        statusValue = updateFlag flag value (status(regs))         
         
 opCodeToFunc :: OpCode -> (Cpu -> Cpu)
 opCodeToFunc 0x18 = clc
@@ -326,35 +371,46 @@ opCodeToFunc 0x84 = stOp Y zeroPageArg 2
 opCodeToFunc 0x94 = stOp Y zeroPageYArg 2
 opCodeToFunc 0x8c = stOp Y absoluteArg 3
 
+opCodeToFunc 0xaa = transferOp Acc X 1
+opCodeToFunc 0xa8 = transferOp Acc Y 1
+opCodeToFunc 0xba = transferOp Sp X 1
+opCodeToFunc 0x8a = transferOp X Acc 1
+opCodeToFunc 0x9a = transferOp X Sp 1
+opCodeToFunc 0x98 = transferOp Y Acc 1
+
+opCodeToFunc 0x48 = pushOp Acc 1
+opCodeToFunc 0x08 = pushOp Status 1
+
+opCodeToFunc 0x68 = pullOp Acc 1
+opCodeToFunc 0x28 = pullOp Status 1
 
 opCodeToFunc opCode = error ("op code " ++ (show(opCode)) ++ " Not implemented")
 
 runCpu :: Cpu -> Cpu
-runCpu cpu@(Cpu mem regs) = runCpu (newCpu)
-  where opCode = readMem (pc(regs)) mem
-        op = opCodeToFunc opCode
-        newCpu = op cpu
+runCpu cpu@(Cpu mem (Registers pc _ _ _ _ _)) | readMem(pc) mem == 0 = cpu
+runCpu cpu@(Cpu mem regs) = runCpu (stepCpu cpu)
 
-prop_clc cpu = testBit (status(registers (clc cpu))) 0 == False
+stepCpu :: Cpu -> Cpu
+stepCpu cpu = (opCodeToFunc opCode) cpu
+  where opCode = nextOpCode cpu
 
-instance Arbitrary Cpu where
-    arbitrary = do
-      regs <- arbitrary
-      mem <- arbitrary
-      return (Cpu mem regs)
+        
+nextOpCode :: Cpu -> Int
+nextOpCode (Cpu mem regs) = readMem (pc(regs)) mem
 
-instance Arbitrary Registers where
-    arbitrary = do
-      acc <- arbitrary
-      status <- arbitrary
-      pc <- arbitrary
-      x <- arbitrary
-      y <- arbitrary
-      return (Registers pc status acc x y)
+runCpuInteractive :: Cpu -> IO ()
+runCpuInteractive cpu = do
+  putStrLn (show cpu)
+  putStrLn ("next op code: " ++ showHex (nextOpCode cpu) "")
+  wait <- getLine
+  runCpuInteractive (stepCpu cpu)
 
-  
 
-      
+initCpu :: [Int] -> [(Int,Int)]-> Cpu
+initCpu program memory = Cpu mem regs
+  where mem = M.fromList(cpuProgram ++ memory)
+        regs = Registers {pc=resetVector, status=0, acc=0, x=0, y=0, sp=stackStart}
+        cpuProgram = zip [resetVector..] program
         
 
 
