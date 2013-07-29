@@ -82,6 +82,7 @@ updateRegister Status value regs = regs{status=value}
 updateRegister Acc value regs = regs{acc=value} 
 updateRegister X value regs = regs{x=value} 
 updateRegister Y value regs = regs{y=value} 
+updateRegister Sp value regs = regs{sp=value}
 
 updateRegisters :: [(RegisterType,RegValue)] -> Registers -> Registers
 updateRegisters ((r,v):vs) regValue = updateRegisters vs (updateRegister r v regValue)
@@ -158,6 +159,8 @@ indirectYarg cpu = error "not implemented"
 toAddress :: Int -> Int -> Int
 toAddress a b = (Data.Bits..|.) (Data.Bits.shiftL a 8) b
 
+fromAddress :: Int -> (Int,Int)
+fromAddress value = (shiftR ((Data.Bits..&.) 0xFF00 value) 8,(Data.Bits..&.) 0x00FF value)
         
 add8 :: Int -> Int -> Int
 add8 a b = mod (a + b) 256
@@ -242,29 +245,58 @@ rorOp :: AddressingMode -> OpSize -> Cpu -> Cpu
 rorOp = shiftOp ((flip rotateR) 1) 0
 
 pushOp :: RegisterType -> OpSize -> Cpu -> Cpu
-pushOp regType size cpu@(Cpu mem regs) = pushToStack regValue cpu
+pushOp regType size cpu@(Cpu mem regs) = push regValue cpu
   where regValue = readRegister regType regs
 
 pullOp :: RegisterType -> OpSize -> Cpu -> Cpu
-pullOp regType size (Cpu mem regs) = Cpu mem newRegs
-  where newRegs = updateRegisters [(regType,fromStack),
-                                   (Sp,sp(regs)-1),
-                                   (Status, newStatus)] regs
-        fromStack = readMem (sp(regs)) mem
+pullOp regType size cpu@(Cpu mem regs) = Cpu mem newRegs
+  where newRegs = updateRegisters [(Status, newStatus),
+                                   (Pc, pc(regs)+size)] pulledRegs
+        fromStack = readRegister regType newRegs
         newStatus = if regType == Status 
                     then fromStack 
                     else updateStatusFlagsNumericOp (status(regs)) fromStack
-                         
-jsrOp :: AddressingMode -> OpSize -> Cpu -> Cpu                         
-jsrOp f size cpu@(Cpu mem regs) = pushToStack returnPoint cpu
-  where returnPoint = pc(regs)+1
+        pulledRegs = registers(pull regType cpu)
         
+jsrOp :: AddressingMode -> OpSize -> Cpu -> Cpu                         
+jsrOp f size cpu@(Cpu mem regs) = Cpu newMem newRegs
+  where returnPoint = pc(regs)
+        pushed = pushAddr returnPoint cpu
+        newMem = memory(pushed)
+        newRegs = updateRegister Pc jumpTo (registers(pushed))
+        jumpTo = f cpu
+        
+rtsOp :: Cpu -> Cpu
+rtsOp cpu@(Cpu mem regs) = Cpu mem newRegs
+  where newRegs =  updateRegister Pc (pc(pulledRegs)+3) pulledRegs
+          where pulledRegs = registers(pullPc cpu)
+
+pull :: RegisterType -> Cpu -> Cpu
+pull regType (Cpu mem regs) = Cpu mem newRegs
+  where stackValue = readMem (sp(regs)) mem
+        newRegs = updateRegisters [(regType,stackValue),
+                                   (Sp, sp(regs)+1)] regs
+                              
+pullPc :: Cpu -> Cpu        
+pullPc (Cpu mem regs) = Cpu mem newRegs
+  where newRegs = updateRegisters [(Pc,stackValue),
+                                   (Sp, sp(regs)+2)] regs
+        stackValue = toAddress high low
+        low = readMem (sp(regs)+1) mem
+        high = readMem (sp(regs)+2) mem
+                         
+
+pushAddr :: Int -> Cpu -> Cpu
+pushAddr addr cpu = push addrLow (push addrHigh cpu) 
+  where addrHigh = fst(fromAddress(addr))
+        addrLow = snd(fromAddress(addr))
+
   
-pushToStack :: Int -> Cpu -> Cpu                                     
-pushToStack value (Cpu mem regs) = Cpu newMem newRegs
+push :: Int -> Cpu -> Cpu                                     
+push value (Cpu mem regs) = Cpu newMem newRegs
   where newMem = writeMem spValue value mem
         spValue = sp(regs)
-        newRegs = updateRegister Sp (spValue+1) regs
+        newRegs = updateRegister Sp (spValue-1) regs
 
   
 updateFlagOp :: Flag -> Bool -> Cpu -> Cpu
@@ -273,6 +305,15 @@ updateFlagOp flag value cpu = Cpu (memory(cpu)) newRegs
         newRegs = (regs {pc = pc(regs)+1, status = statusValue})
         statusValue = updateFlag flag value (status(regs))         
         
+incOp :: RegisterType -> Int -> Int -> Cpu -> Cpu        
+incOp regType value size (Cpu mem regs) = Cpu mem newRegs
+  where newRegs = updateRegisters [(regType, newRegValue),
+                                   (Pc,pc(regs)+size),
+                                   (Status,newStatus)] regs
+        newRegValue = oldRegValue + value
+        oldRegValue = readRegister regType regs
+        newStatus = updateStatusFlagsNumericOp (status(regs)) oldRegValue
+
 opCodeToFunc :: OpCode -> (Cpu -> Cpu)
 opCodeToFunc 0x18 = clc
 opCodeToFunc 0xD8 = cld
@@ -384,6 +425,14 @@ opCodeToFunc 0x08 = pushOp Status 1
 opCodeToFunc 0x68 = pullOp Acc 1
 opCodeToFunc 0x28 = pullOp Status 1
 
+opCodeToFunc 0x20 = jsrOp absoluteArg 3
+opCodeToFunc 0x60 = rtsOp
+
+opCodeToFunc 0xe8 = incOp X 1 1
+opCodeToFunc 0xc8 = incOp Y 1 1
+opCodeToFunc 0xca = incOp X (-1) 1
+opCodeToFunc 0x88 = incOp Y (-1) 1
+
 opCodeToFunc opCode = error ("op code " ++ (show(opCode)) ++ " Not implemented")
 
 runCpu :: Cpu -> Cpu
@@ -406,11 +455,11 @@ runCpuInteractive cpu = do
   runCpuInteractive (stepCpu cpu)
 
 
-initCpu :: [Int] -> [(Int,Int)]-> Cpu
-initCpu program memory = Cpu mem regs
+initCpu :: Int -> [Int] -> [(Int,Int)]-> Cpu
+initCpu startAddr program memory = Cpu mem regs
   where mem = M.fromList(cpuProgram ++ memory)
-        regs = Registers {pc=resetVector, status=0, acc=0, x=0, y=0, sp=stackStart}
-        cpuProgram = zip [resetVector..] program
+        regs = Registers {pc=startAddr, status=0, acc=0, x=0, y=0, sp=stackStart}
+        cpuProgram = zip [startAddr..] program
         
 
 
