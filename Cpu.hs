@@ -6,6 +6,7 @@ import Data.List
 import Data.Maybe
 import Data.Word
 import Test.QuickCheck
+import Data.Int
 import Numeric(showHex)
 import qualified Data.Map as M
 
@@ -55,6 +56,9 @@ flagPos BrkCommand = 4
 flagPos Unused = 5
 flagPos OverFlow = 6
 flagPos Neg = 7
+
+readFlag :: Flag -> RegValue -> Bool
+readFlag flag val = testBit val (flagPos flag)
 
 readMem :: Int -> Memory -> Int
 readMem addr mem | M.member addr mem == True = (M.!) mem addr
@@ -114,6 +118,9 @@ fstArg (Cpu mem regs) = readMem (pc(regs)+1) mem
 secArg :: Cpu -> Int
 secArg (Cpu mem regs) = readMem (pc(regs)+2) mem
 
+relativeArg :: Cpu -> Int
+relativeArg cpu@(Cpu mem regs) = fromIntegral(fromIntegral((fstArg cpu))::Int8)::Int
+
 immediateArg :: Cpu -> Int
 immediateArg = fstArg
 
@@ -164,6 +171,13 @@ fromAddress value = (shiftR ((Data.Bits..&.) 0xFF00 value) 8,(Data.Bits..&.) 0x0
         
 add8 :: Int -> Int -> Int
 add8 a b = mod (a + b) 256
+
+add16 :: Int -> Int -> Int
+add16 a b = mod (a + b) 65536
+
+
+sub8 :: Int -> Int -> Int
+sub8 a b = mod (a - b) 256
 
 updateStatusFlagsNumericOp :: RegValue -> RegValue -> RegValue
 updateStatusFlagsNumericOp currentStatus newAcc = newStatus
@@ -314,6 +328,26 @@ incOp regType value size (Cpu mem regs) = Cpu mem newRegs
         oldRegValue = readRegister regType regs
         newStatus = updateStatusFlagsNumericOp (status(regs)) oldRegValue
 
+cmpOp :: AddressingMode -> RegisterType -> OpSize -> Cpu -> Cpu
+cmpOp f regType size cpu@(Cpu mem regs) = Cpu mem newRegs
+  where newRegs = updateRegisters [(Status,newStatus),
+                                   (Pc,pc(regs)+size)] regs 
+        regValue = readRegister regType regs
+        carry = regValue >= memValue
+        zero = regValue == memValue
+        negative = testBit (sub8 regValue memValue) 7 
+        memValue = f cpu
+        newStatus = updateFlags [(Carry,carry),
+                                 (Neg,negative),
+                                 (Zero,zero)] (status(regs))
+
+bneOp :: AddressingMode -> OpSize -> Cpu -> Cpu
+bneOp f size cpu@(Cpu mem regs) = Cpu mem newRegs
+  where newRegs = updateRegister Pc newPc regs
+        newPc = if zeroClear then newPcValue else pc(regs)+size
+        newPcValue = add16 (pc(regs)) (f cpu) 
+        zeroClear = not (readFlag Zero (status(regs)))
+
 opCodeToFunc :: OpCode -> (Cpu -> Cpu)
 opCodeToFunc 0x18 = clc
 opCodeToFunc 0xD8 = cld
@@ -428,10 +462,29 @@ opCodeToFunc 0x28 = pullOp Status 1
 opCodeToFunc 0x20 = jsrOp absoluteArg 3
 opCodeToFunc 0x60 = rtsOp
 
+opCodeToFunc 0xc9 = cmpOp immediateArg Acc 2
+opCodeToFunc 0xc5 = cmpOp zeroPageArg Acc 2
+opCodeToFunc 0xd5 = cmpOp zeroPageXArg Acc 2
+opCodeToFunc 0xcd = cmpOp absoluteArg Acc 3
+opCodeToFunc 0xdd = cmpOp absoluteXarg Acc 3
+opCodeToFunc 0xd9 = cmpOp absoluteYarg Acc 3
+opCodeToFunc 0xc1 = cmpOp indirectXarg Acc 2
+opCodeToFunc 0xd1 = cmpOp indirectYarg Acc 2
+
+opCodeToFunc 0xe0 = cmpOp immediateArg X 2
+opCodeToFunc 0xe4 = cmpOp zeroPageArg X 3
+opCodeToFunc 0xec = cmpOp absoluteArg X 4
+
+opCodeToFunc 0xc0 = cmpOp immediateArg Y 2
+opCodeToFunc 0xc4 = cmpOp zeroPageArg Y 3
+opCodeToFunc 0xcc = cmpOp absoluteArg Y 4
+
 opCodeToFunc 0xe8 = incOp X 1 1
 opCodeToFunc 0xc8 = incOp Y 1 1
 opCodeToFunc 0xca = incOp X (-1) 1
 opCodeToFunc 0x88 = incOp Y (-1) 1
+
+opCodeToFunc 0xd0 = bneOp relativeArg 2
 
 opCodeToFunc opCode = error ("op code " ++ (show(opCode)) ++ " Not implemented")
 
