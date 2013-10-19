@@ -1,4 +1,8 @@
-module Rom where
+module Rom
+       (Rom,
+        Header,
+        parse
+       ) where
 
 import qualified Data.ByteString.Lazy.Char8 as L8
 import qualified Data.ByteString.Lazy as L
@@ -9,7 +13,11 @@ import Data.Word
 data Header = Header {
   sizePrgRom :: Int,
   sizeChrRom :: Int,
-  sizePrgRam :: Int
+  sizePrgRam :: Int,
+  flags6 :: Word8,
+  flags7 :: Word8,
+  flags9 :: Word8,
+  flags10 :: Word8
   } deriving (Eq, Show)
 
 data Rom = Rom {
@@ -98,6 +106,9 @@ firstParser ==> secondParser = Parse chainedParser
             Right (firstResult, newState) -> 
               runParse (secondParser firstResult) newState
 
+(==>&) :: Parse a -> Parse b -> Parse b
+p ==>& f = p ==> \_ -> f
+
 bail :: String -> Parse a
 bail err = Parse $ \s -> Left $ "byte offset " ++ show (offset s) ++ ": " ++ err
 
@@ -111,18 +122,54 @@ identity a = Parse (\s -> Right (a,s))
 instance Monad Parse where
   return = identity
   (>>=) = (==>)
+  (>>) = (==>&)
   fail = bail
   
+{-
 parse :: Parse a -> L.ByteString -> Either String a
 parse parser initState = case runParse parser (ParseState initState 0) of
   Left err-> Left err
   Right (result, _) -> Right result
                   
+-}
+
+b16Tob1 :: Word8 -> Int
+b16Tob1 b = 16 * (fromIntegral b)
+
+b8Tob1 :: Word8 -> Int
+b8Tob1 b = 8 * (fromIntegral b)
+
+zeroes :: Int -> [Word8]
+zeroes num = take num (repeat 0)
 
 parseP :: L.ByteString -> Parse Rom
-parseP bytes = matchHeader2 (L8.pack "NES\SUB") s ==>
-               \_ -> parseByte ==> \s -> identity 
-
+parseP bytes = do 
+  matchBytes2 (L8.pack "NES\SUB")
+  prgSizeRom <- parseByte 
+  chrSizeRom <- parseByte
+  flags6 <- parseByte
+  flags7 <- parseByte  
+  prgSizeRam <- parseByte  
+  flags9 <- parseByte    
+  flags10 <- parseByte    
+  parseBytes 5
+  return (Rom (Header 
+               (b16Tob1 prgSizeRom) 
+               (b8Tob1 chrSizeRom) 
+               (b8Tob1 prgSizeRam)
+               flags6
+               flags7
+               flags9
+               flags10
+              ) 
+          L.empty L.empty L.empty)
+                                         
+  
+parse :: L.ByteString -> Either String Rom
+parse bytes = case runParse (parseP bytes) (ParseState bytes 0) of
+  Left errorMsg -> Left errorMsg
+  Right (rom,_) -> Right rom
+    
 {--
 
 parseP :: L.ByteString -> Maybe Rom
