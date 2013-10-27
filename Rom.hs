@@ -1,6 +1,8 @@
 module Rom
        (Rom,
         Header,
+        sizePrgRom,
+        header,
         parse
        ) where
 
@@ -9,6 +11,8 @@ import qualified Data.ByteString.Lazy as L
 import Data.Char 
 import Data.Int
 import Data.Word
+import Data.Bits as B
+import Control.Monad
 
 data Header = Header {
   sizePrgRom :: Int,
@@ -91,6 +95,11 @@ parseBytes count = getState ==> \initState ->
       where newState = initState {string = remainder,
                                   offset = newOffset}
             newOffset = offset initState + count
+
+parseBytesCond :: Bool -> Int64 -> Parse L.ByteString  
+parseBytesCond True count = parseBytes count
+parseBytesCond False _ = getState ==> \initState ->
+  putState initState ==> \_ -> identity L.empty
   
 parseByte :: Parse Word8                                            
 parseByte = do 
@@ -133,14 +142,14 @@ parse parser initState = case runParse parser (ParseState initState 0) of
                   
 -}
 
-b16Tob1 :: Word8 -> Int
-b16Tob1 b = 16 * (fromIntegral b)
-
-b8Tob1 :: Word8 -> Int
-b8Tob1 b = 8 * (fromIntegral b)
+toByteCount :: Int -> Word8 -> Int
+toByteCount c b = c * 1024 * (fromIntegral b)
 
 zeroes :: Int -> [Word8]
 zeroes num = take num (repeat 0)
+
+trainerBit :: Word8 -> Bool
+trainerBit flag = B.testBit flag 2
 
 parseP :: L.ByteString -> Parse Rom
 parseP bytes = do 
@@ -153,16 +162,18 @@ parseP bytes = do
   flags9 <- parseByte    
   flags10 <- parseByte    
   parseBytes 5
+  trainer <- parseBytesCond (trainerBit flags6) 512
+  prg <- parseBytes (fromIntegral (prgSizeRom*16384))
   return (Rom (Header 
-               (b16Tob1 prgSizeRom) 
-               (b8Tob1 chrSizeRom) 
-               (b8Tob1 prgSizeRam)
+               (toByteCount 16 prgSizeRom) 
+               (toByteCount 8 chrSizeRom) 
+               (toByteCount 8 prgSizeRam)
                flags6
                flags7
                flags9
                flags10
               ) 
-          L.empty L.empty L.empty)
+          trainer prg L.empty)
                                          
   
 parse :: L.ByteString -> Either String Rom
