@@ -5,17 +5,26 @@ module Mem (
     initMem
 ) where
 
-import qualified Data.Map as M
+import Data.Map
 
 
-type Memory = M.Map Int Int
+type Memory = Map Int Int
+
+isMirror :: Int -> Bool
+isMirror addr = 0x2008 <= addr && addr <= 0x3FFF
+
+toMirrorBase :: Int -> Int
+toMirrorBase addr = (0x2000 + addr `mod` 8)
 
 readMem :: Int -> Memory -> Int
-readMem addr mem | M.member addr mem == True = (M.!) mem addr
-                 | M.member addr mem == False = 0
+readMem addr mem
+    | isMirror addr = readMem (toMirrorBase addr) mem
+    | otherwise     = findWithDefault 0 addr mem
   
 writeMem :: Int -> Int -> Memory -> Memory
-writeMem address value mem = (M.insert) address value mem
+writeMem addr value mem
+    | isMirror addr = writeMem (toMirrorBase addr) value mem
+    | otherwise     = insert addr value mem
 
 initMem :: [(Int, Int)] -> Memory
-initMem = M.fromList
+initMem = fromList
