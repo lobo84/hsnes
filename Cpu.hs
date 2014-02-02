@@ -46,7 +46,8 @@ type OpSize = Int
 type Address = Int
 type MemEntry = Int
 type BitPos = Int
-
+type Condition = Cpu -> Bool
+  
 flagPos :: Flag -> Int
 flagPos Carry = 0
 flagPos Zero = 1
@@ -348,6 +349,29 @@ bneOp f size cpu@(Cpu mem regs) = Cpu mem newRegs
         newPcValue = add16 (pc(regs)) (f cpu) 
         zeroClear = not (readFlag Zero (status(regs)))
 
+
+isZeroState :: Condition
+isZeroState (Cpu mem regs) = readFlag Zero (status(regs))
+
+isPositiveState :: Condition
+isPositiveState (Cpu mem regs) = readFlag Neg (status(regs))
+
+isOverflowState :: Condition
+isOverflowState (Cpu mem regs) = readFlag OverFlow (status(regs))
+
+isCarryState :: Condition
+isCarryState (Cpu mem regs) = readFlag Carry (status(regs))
+
+branchOp :: AddressingMode -> Condition -> OpSize -> Cpu -> Cpu
+branchOp f c size cpu@(Cpu mem regs) = Cpu mem newRegs
+  where newRegs = updateRegister Pc newPcVal regs
+        newPcVal = if doBranch then bPcVal else pcVal
+        bPcVal = add16 (pc(regs)) (f cpu) 
+        pcVal = pc(regs)+size
+        doBranch = c cpu
+        
+
+
 opCodeToFunc :: OpCode -> (Cpu -> Cpu)
 opCodeToFunc 0x18 = clc
 opCodeToFunc 0xD8 = cld
@@ -484,7 +508,12 @@ opCodeToFunc 0xc8 = incOp Y 1 1
 opCodeToFunc 0xca = incOp X (-1) 1
 opCodeToFunc 0x88 = incOp Y (-1) 1
 
-opCodeToFunc 0xd0 = bneOp relativeArg 2
+opCodeToFunc 0xf0 = branchOp relativeArg isZeroState 2
+opCodeToFunc 0xd0 = branchOp relativeArg (not . isZeroState) 2
+opCodeToFunc 0xb0 = branchOp relativeArg isCarryState 2
+opCodeToFunc 0x90 = branchOp relativeArg (not . isCarryState) 2
+opCodeToFunc 0x30 = branchOp relativeArg (not . isPositiveState) 2
+opCodeToFunc 0x10 = branchOp relativeArg isPositiveState 2
 
 opCodeToFunc opCode = error ("op code " ++ (show(opCode)) ++ " Not implemented")
 
