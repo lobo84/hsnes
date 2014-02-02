@@ -209,7 +209,7 @@ stOp rType f size cpu@(Cpu mem regs) = Cpu newMem newRegs
 bitOp :: AccFuncTwoArg -> AddressingMode -> OpSize -> Cpu -> Cpu
 bitOp aluOp f size cpu@(Cpu mem regs) = Cpu mem newRegs
   where newRegs = regs {acc=newAcc, pc=newPc, status=newStatus}
-        newAcc = (aluOp) acc2 acc2 
+        newAcc = (aluOp) acc1 acc2 
         acc1 = acc(regs)
         acc2 = f cpu
         newPc = pc(regs) + size
