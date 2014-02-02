@@ -1,14 +1,16 @@
-module Cpu(Cpu, stepCpu, initCpu) where
+module Cpu(
+    Cpu,
+    stepCpu,
+    initCpu
+) where
 
 import Data.Bits
---import Control.Monad.Error
 import Data.List
 import Data.Maybe
 import Data.Word
---import Test.QuickCheck
 import Data.Int
 import Numeric(showHex)
-import qualified Data.Map as M
+import Mem
 
 data Cpu = Cpu {
   memory :: Memory,
@@ -38,7 +40,6 @@ data Registers = Registers {
 data RegisterType = Pc | Status | Acc | X | Y | Sp deriving Eq
 
 type OpCode = Int       
-type Memory = M.Map Int Int
 type AddressingMode = Cpu -> Int
 type AccFuncTwoArg = RegValue -> RegValue -> RegValue
 type AccFuncOneArg = RegValue -> RegValue
@@ -59,13 +60,6 @@ flagPos Neg = 7
 
 readFlag :: Flag -> RegValue -> Bool
 readFlag flag val = testBit val (flagPos flag)
-
-readMem :: Int -> Memory -> Int
-readMem addr mem | M.member addr mem == True = (M.!) mem addr
-                 | M.member addr mem == False = 0
-  
-writeMem :: Int -> Int -> Memory -> Memory
-writeMem address value mem = (M.insert) address value mem
 
 updateFlags :: [(Flag,Bool)] -> RegValue -> RegValue
 updateFlags ((f,v):vs) regValue = updateFlags vs (updateFlag f v regValue)
@@ -510,7 +504,7 @@ runCpuInteractive cpu = do
 
 initCpu :: Int -> [Int] -> [(Int,Int)]-> Cpu
 initCpu startAddr program memory = Cpu mem regs
-  where mem = M.fromList(cpuProgram ++ memory)
+  where mem = initMem (cpuProgram ++ memory)
         regs = Registers {pc=startAddr, status=0, acc=0, x=0, y=0, sp=stackStart}
         cpuProgram = zip [startAddr..] program
         
