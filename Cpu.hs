@@ -1,11 +1,11 @@
-module Cpu where
+module Cpu(Cpu, stepCpu, initCpu) where
 
 import Data.Bits
-import Control.Monad.Error
+--import Control.Monad.Error
 import Data.List
 import Data.Maybe
 import Data.Word
-import Test.QuickCheck
+--import Test.QuickCheck
 import Data.Int
 import Numeric(showHex)
 import qualified Data.Map as M
@@ -18,7 +18,7 @@ data Cpu = Cpu {
 type RegValue = Int
 
 data Flag = Carry
-          |Zero
+          | Zero
           | IrqDis
           | DecMode
           | BrkCommand
