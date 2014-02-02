@@ -1,27 +1,29 @@
 module Nes where
 
 import Cpu
+import Ppu
 import Numeric(showHex)
 
-data Ppu = Ppu
 
 runNesInteractive :: (Cpu, Ppu, Int) -> IO ()
 runNesInteractive (cpu, ppu, n) = do
   putStrLn (show cpu)
   --putStrLn ("next op code: " ++ showHex (nextOpCode cpu) "")
   wait <- getLine
-  runNesInteractive (step cpu Ppu 0)
+  runNesInteractive (step cpu ppu 0)
 
 step :: Cpu -> Ppu -> Int -> (Cpu, Ppu, Int)
-step cpu ppu n = if n == 0 then (cpu', ppu', t) else (cpu, ppu', t - 1)
+step cpu ppu n = 
+    if n == 0 
+    then (cpu', ppu', t) 
+    else (cpu, ppu', t - 1)
   where
     cpu' = stepCpu cpu
-    t = 0
     ppu' = stepPpu ppu
+    t = 0
 
 
-stepPpu :: Ppu -> Ppu
-stepPpu = id
+
 
 
 --run :: Int -> Int
@@ -30,6 +32,6 @@ stepPpu = id
 --    (t  Cpu(regs mem')) <- stepCpu Cpu(regs mem)
 --  else 
 --    t = n-1
---	ppu <- stepPpu Ppu(mem')
---	wait(fps)
---	step t
+--  ppu <- stepPpu Ppu(mem')
+--  wait(fps)
+--  step t
