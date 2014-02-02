@@ -131,7 +131,8 @@ immediateArg :: Cpu -> Int
 immediateArg = fstArg
 
 absoluteArg :: Cpu -> Int
-absoluteArg cpu@(Cpu mem regs) = args16Address cpu
+absoluteArg cpu@(Cpu mem regs) = readMem addr mem
+  where addr = args16Address cpu
         
 args16Address :: Cpu -> Address
 args16Address cpu = toAddress (secArg(cpu)) (fstArg(cpu))
