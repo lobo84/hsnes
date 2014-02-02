@@ -4,6 +4,8 @@ module Cpu.Internal(
     initCpu,
     runCpu,
     runCpuInteractive,
+    immediateArg,
+    absoluteArg,
     pc,
     status,
     acc,
