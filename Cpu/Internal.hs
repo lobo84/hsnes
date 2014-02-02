@@ -3,6 +3,7 @@ module Cpu.Internal(
     stepCpu,
     initCpu,
     runCpu,
+    runCpuInteractive,
     pc,
     status,
     acc,
