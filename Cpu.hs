@@ -1,7 +1,15 @@
 module Cpu(
     Cpu,
     stepCpu,
-    initCpu
+    initCpu,
+    runCpu,
+    pc,
+    status,
+    acc,
+    x,
+    y,
+    sp,
+    registers
 ) where
 
 import Data.Bits
