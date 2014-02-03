@@ -22,12 +22,21 @@ immediateArgTest = TestCase (assertEqual "" expected actual)
         expected = 0x02
         
 absoluteArgTest = TestCase (assertEqual "" expected actual)
-  where cpu = (initCpu 0 [0x01, 0x10, 0x20] [(0x2010,0x04)])
+  where cpu = (initCpu 0 [0x01, 0x10, 0x10] [(0x1010,0x04),(0x1020,0x01)])
         actual = absoluteArg cpu 
+        expected = 0x04
+
+absoluteXArgTest = TestCase (assertEqual "" expected actual)
+  where cpu = memSetCpu{registers=regs}
+        memSetCpu = (initCpu 0 [0x01, 0x10, 0x20] [(0x2012,0x04)])
+        regs = updateRegister X xVal (registers(memSetCpu))
+        actual = absoluteXarg cpu 
+        xVal = 2
         expected = 0x04
         
 
 
 tests = TestList [TestLabel "testProgram" testProgram,
                   TestLabel "immediateArgTest" immediateArgTest,
-                  TestLabel "absoluteArgTest" absoluteArgTest]
+                  TestLabel "absoluteArgTest" absoluteArgTest,
+                  TestLabel "absoluteXArgTest" absoluteXArgTest]

@@ -1,5 +1,6 @@
 module Cpu.Internal(
     Cpu,
+    RegisterType(X),    
     stepCpu,
     initCpu,
     runCpu,
@@ -12,7 +13,9 @@ module Cpu.Internal(
     x,
     y,
     sp,
-    registers
+    registers,
+    absoluteXarg,
+    updateRegister
 ) where
 
 import Data.Bits
