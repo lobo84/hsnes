@@ -5,10 +5,10 @@ module Mem (
     initMem
 ) where
 
-import Data.Map
+import Data.Map as M
 
 
-type Memory = Map Int Int
+type Memory = M.Map Int Int
 
 isMirror :: Int -> Bool
 isMirror addr = 0x2008 <= addr && addr <= 0x3FFF
@@ -24,7 +24,7 @@ readMem addr mem
 writeMem :: Int -> Int -> Memory -> Memory
 writeMem addr value mem
     | isMirror addr = writeMem (toMirrorBase addr) value mem
-    | otherwise     = insert addr value mem
+    | otherwise     = M.insert addr value mem
 
 initMem :: [(Int, Int)] -> Memory
-initMem = fromList
+initMem mem = Prelude.foldr (\x m -> writeMem (fst x) (snd x) m) empty mem
