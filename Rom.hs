@@ -2,6 +2,7 @@ module Rom
        (Rom,
         Header,
         sizePrgRom,
+        prgData,
         header,
         parse
        ) where
@@ -163,7 +164,7 @@ parseP bytes = do
   flags10 <- parseByte    
   parseBytes 5
   trainer <- parseBytesCond (trainerBit flags6) 512
-  prg <- parseBytes (fromIntegral (prgSizeRom*16384))
+  prg <- parseBytes (fromIntegral (toByteCount 16 prgSizeRom ))
   return (Rom (Header 
                (toByteCount 16 prgSizeRom) 
                (toByteCount 8 chrSizeRom) 
