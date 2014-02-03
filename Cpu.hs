@@ -1,6 +1,8 @@
 
+
 module Cpu(runCpu, 
            stepCpu, 
-           runCpuInteractive) where 
+           runCpuInteractive,
+           initCpu) where 
 
 import Cpu.Internal
