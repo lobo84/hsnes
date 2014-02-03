@@ -524,7 +524,8 @@ opCodeToFunc 0x90 = branchOp relativeArg (not . isCarryState) 2
 opCodeToFunc 0x30 = branchOp relativeArg (not . isPositiveState) 2
 opCodeToFunc 0x10 = branchOp relativeArg isPositiveState 2
 
-opCodeToFunc opCode = error ("op code " ++ (show(opCode)) ++ " Not implemented")
+
+opCodeToFunc opCode = error ("op code " ++ (showHex(opCode) "") ++ " Not implemented")
 
 runCpu :: Cpu -> Cpu
 runCpu cpu@(Cpu mem (Registers pc _ _ _ _ _)) | readMem(pc) mem == 0 = cpu
