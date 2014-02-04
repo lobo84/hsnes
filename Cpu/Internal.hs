@@ -15,7 +15,8 @@ module Cpu.Internal(
     sp,
     registers,
     absoluteXargPtr,
-    updateRegister
+    updateRegister,
+    showCpu
 ) where
 
 import Data.Bits
@@ -49,7 +50,19 @@ data Registers = Registers {
   x :: RegValue,
   y :: RegValue,
   sp :: RegValue
-} deriving Show
+} 
+
+instance Show Registers where
+  show (Registers pc status acc x y sp) = 
+    "{" ++ 
+    "pc=" ++ h pc ++
+    " status=" ++ h status ++
+    " acc=" ++ h acc ++    
+    " x=" ++ h x ++    
+    " y=" ++ h y ++    
+    " sp=" ++ h sp ++        
+    "}"
+    where h val = showHex val "h"
 
 data RegisterType = Pc | Status | Acc | X | Y | Sp deriving Eq
 
@@ -547,9 +560,15 @@ stepCpu cpu = (opCodeToFunc opCode) cpu
 nextOpCode :: Cpu -> Int
 nextOpCode (Cpu mem regs) = readMem (pc(regs)) mem
 
+showCpu :: Cpu -> String
+showCpu (Cpu mem regs) = (show regs) ++ " pc+1=" ++ mem1 ++ " pc+2=" ++ mem2
+  where nextMem n = readMem ((pc(regs))+n) mem
+        mem1 = showHex (nextMem 1) ""
+        mem2 = showHex (nextMem 2) ""
+
 runCpuInteractive :: Cpu -> IO ()
 runCpuInteractive cpu = do
-  putStrLn (show cpu)
+  putStrLn (showCpu cpu)
   putStrLn ("next op code: " ++ showHex (nextOpCode cpu) "")
   wait <- getLine
   runCpuInteractive (stepCpu cpu)
