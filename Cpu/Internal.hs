@@ -134,8 +134,10 @@ immediateArg :: Cpu -> Int
 immediateArg = fstArg
 
 absoluteArgPtr :: Cpu -> Int
-absoluteArgPtr cpu@(Cpu mem regs) = readMem addr mem
-  where addr = args16Address cpu
+absoluteArgPtr cpu@(Cpu mem regs) = readMem (absoluteArg cpu) mem
+        
+absoluteArg :: Cpu -> Int
+absoluteArg cpu@(Cpu mem regs) = args16Address cpu
         
 args16Address :: Cpu -> Address
 args16Address cpu = toAddress (secArg(cpu)) (fstArg(cpu))
@@ -380,6 +382,11 @@ branchOp f c size cpu@(Cpu mem regs) = Cpu mem newRegs
         doBranch = c cpu
         
 
+jmpOp :: AddressingMode -> OpSize -> Cpu -> Cpu
+jmpOp f size cpu@(Cpu mem regs) = Cpu mem newRegs
+ where newPcVal = f cpu
+       newRegs = updateRegister Pc newPcVal regs
+
 
 opCodeToFunc :: OpCode -> (Cpu -> Cpu)
 opCodeToFunc 0x18 = clc
@@ -524,7 +531,7 @@ opCodeToFunc 0x90 = branchOp relativeArg (not . isCarryState) 2
 opCodeToFunc 0x30 = branchOp relativeArg (not . isPositiveState) 2
 opCodeToFunc 0x10 = branchOp relativeArg isPositiveState 2
 
-
+opCodeToFunc 0x4c = jmpOp absoluteArg 3
 
 opCodeToFunc opCode = error ("op code " ++ (showHex(opCode) "") ++ " Not implemented")
 
