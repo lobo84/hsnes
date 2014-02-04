@@ -18,6 +18,8 @@ module Cpu.Internal(
     updateRegister,
     showCpu,
     resetVector
+    isDead,
+    isDeadAtExec
 ) where
 
 import Data.Bits
@@ -575,8 +577,16 @@ opCodeToFunc 0xea = nop 1
 opCodeToFunc opCode = error ("op code " ++ (showHex(opCode) "") ++ " Not implemented")
 
 runCpu :: Cpu -> Cpu
-runCpu cpu@(Cpu mem (Registers pc _ _ _ _ _)) | readMem(pc) mem == 0 = cpu
-runCpu cpu@(Cpu mem regs) = runCpu (stepCpu cpu)
+runCpu cpu
+    | isDead cpu = cpu
+    | otherwise  = runCpu (stepCpu cpu)
+
+
+isDeadAtExec :: Cpu -> Int -> Bool
+isDeadAtExec cpu@(Cpu mem (Registers pc _ _ _ _ _)) cn = isDead cpu && cn == 0
+
+isDead :: Cpu -> Bool
+isDead cpu@(Cpu mem (Registers pc _ _ _ _ _)) = readMem(pc) mem == 0
 
 stepCpu :: Cpu -> Cpu
 stepCpu cpu = (opCodeToFunc opCode) cpu
