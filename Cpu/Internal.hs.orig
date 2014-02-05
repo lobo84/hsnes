@@ -6,8 +6,7 @@ module Cpu.Internal(
     runCpu,
     runCpuInteractive,
     immediateArg,
-    absoluteArg,
-    absoluteArgPtr,    
+    absoluteArgPtr,
     pc,
     status,
     acc,
@@ -15,12 +14,17 @@ module Cpu.Internal(
     y,
     sp,
     registers,
+<<<<<<< HEAD
     absoluteXargPtr,
     updateRegister,
     showCpu,
-    resetVector,
+    resetVector
+=======
+    absoluteXarg,
+    updateRegister,
     isDead,
     isDeadAtExec
+>>>>>>> 7332dee4d643f44580191ab04a6f21182b96b070
 ) where
 
 import Data.Bits
@@ -417,7 +421,7 @@ bitTstOp f size cpu@(Cpu mem regs) = Cpu mem newRegs
         newZero = masked == 0
         newOverflow = readFlag OverFlow memArg
         newNegative = readFlag Neg memArg
-        memArg = readMem (f cpu) mem
+        memArg = (f cpu)
         newStatus = updateFlags [(OverFlow,newOverflow),
                                  (Neg, newNegative),
                                  (Zero, newZero)] (status regs)
