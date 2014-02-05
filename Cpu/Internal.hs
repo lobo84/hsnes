@@ -391,7 +391,7 @@ branchOp :: AddressingMode -> Condition -> OpSize -> Cpu -> Cpu
 branchOp f c size cpu@(Cpu mem regs) = Cpu mem newRegs
   where newRegs = updateRegister Pc newPcVal regs
         newPcVal = if doBranch then bPcVal else pcVal
-        bPcVal = (add16 (pc(regs)) (f cpu) ) 
+        bPcVal = (add16 (pc(regs)) (f cpu) ) + size
         pcVal = pc(regs)+size
         doBranch = c cpu
         
