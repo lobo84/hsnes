@@ -8,8 +8,9 @@ main = do
   bytes <- L.readFile "nestest.nes"
   case R.parse(bytes) of 
     Left errMsg -> putStr ("Parse failed:\n" ++ errMsg)
-    Right rom -> C.runCpuInteractive (C.initCpu 0 intRom [])
+    Right rom -> C.runCpuInteractive (C.initCpu 0xc000 [] mem)
       where intRom = map (\v -> fromIntegral(v)::Int) (L.unpack(R.prgData rom))
+            mem = zip [0xc000..] intRom
       --putStr ("Parse success:\n" ++ (romInfo rom))
                         
   

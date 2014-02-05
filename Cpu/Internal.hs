@@ -16,7 +16,8 @@ module Cpu.Internal(
     registers,
     absoluteXargPtr,
     updateRegister,
-    showCpu
+    showCpu,
+    resetVector
 ) where
 
 import Data.Bits
@@ -561,7 +562,7 @@ nextOpCode :: Cpu -> Int
 nextOpCode (Cpu mem regs) = readMem (pc(regs)) mem
 
 showCpu :: Cpu -> String
-showCpu (Cpu mem regs) = (show regs) ++ " pc+1=" ++ mem1 ++ " pc+2=" ++ mem2
+showCpu (Cpu mem regs) = (show mem) ++ (show regs) ++ " pc+1=" ++ mem1 ++ " pc+2=" ++ mem2
   where nextMem n = readMem ((pc(regs))+n) mem
         mem1 = showHex (nextMem 1) ""
         mem2 = showHex (nextMem 2) ""

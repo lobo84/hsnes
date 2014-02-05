@@ -3,6 +3,7 @@
 module Cpu(runCpu, 
            stepCpu, 
            runCpuInteractive,
-           initCpu) where 
+           initCpu,
+           resetVector) where 
 
 import Cpu.Internal
