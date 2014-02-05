@@ -391,7 +391,7 @@ branchOp :: AddressingMode -> Condition -> OpSize -> Cpu -> Cpu
 branchOp f c size cpu@(Cpu mem regs) = Cpu mem newRegs
   where newRegs = updateRegister Pc newPcVal regs
         newPcVal = if doBranch then bPcVal else pcVal
-        bPcVal = add16 (pc(regs)) (f cpu) 
+        bPcVal = (add16 (pc(regs)) (f cpu) ) 
         pcVal = pc(regs)+size
         doBranch = c cpu
         
@@ -401,6 +401,9 @@ jmpOp f size cpu@(Cpu mem regs) = Cpu mem newRegs
  where newPcVal = f cpu
        newRegs = updateRegister Pc newPcVal regs
 
+nop :: OpSize -> Cpu -> Cpu
+nop size cpu@(Cpu mem regs) = Cpu mem newRegs
+  where newRegs = updateRegister Pc (pc(regs)+size) regs
 
 opCodeToFunc :: OpCode -> (Cpu -> Cpu)
 opCodeToFunc 0x18 = clc
@@ -546,6 +549,7 @@ opCodeToFunc 0x30 = branchOp relativeArg (not . isPositiveState) 2
 opCodeToFunc 0x10 = branchOp relativeArg isPositiveState 2
 
 opCodeToFunc 0x4c = jmpOp absoluteArg 3
+opCodeToFunc 0xea = nop 1
 
 opCodeToFunc opCode = error ("op code " ++ (showHex(opCode) "") ++ " Not implemented")
 
@@ -562,7 +566,7 @@ nextOpCode :: Cpu -> Int
 nextOpCode (Cpu mem regs) = readMem (pc(regs)) mem
 
 showCpu :: Cpu -> String
-showCpu (Cpu mem regs) = (show mem) ++ (show regs) ++ " pc+1=" ++ mem1 ++ " pc+2=" ++ mem2
+showCpu (Cpu mem regs) = (show regs) ++ " pc+1=" ++ mem1 ++ " pc+2=" ++ mem2
   where nextMem n = readMem ((pc(regs))+n) mem
         mem1 = showHex (nextMem 1) ""
         mem2 = showHex (nextMem 2) ""
