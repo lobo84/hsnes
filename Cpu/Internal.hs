@@ -513,7 +513,7 @@ opCodeToFunc 0x08 = pushOp Status 1
 opCodeToFunc 0x68 = pullOp Acc 1
 opCodeToFunc 0x28 = pullOp Status 1
 
-opCodeToFunc 0x20 = jsrOp absoluteArgPtr 3
+opCodeToFunc 0x20 = jsrOp absoluteArg 3
 opCodeToFunc 0x60 = rtsOp
 
 opCodeToFunc 0xc9 = cmpOp immediateArg Acc 2
