@@ -562,6 +562,8 @@ opCodeToFunc 0xb0 = branchOp relativeArg isCarryState 2
 opCodeToFunc 0x90 = branchOp relativeArg (not . isCarryState) 2
 opCodeToFunc 0x30 = branchOp relativeArg (not . isPositiveState) 2
 opCodeToFunc 0x10 = branchOp relativeArg isPositiveState 2
+opCodeToFunc 0x70 = branchOp relativeArg isOverflowState 2
+opCodeToFunc 0x50 = branchOp relativeArg (not . isOverflowState) 2
 
 opCodeToFunc 0x4c = jmpOp absoluteArg 3
 
