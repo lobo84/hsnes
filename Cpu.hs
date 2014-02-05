@@ -1,10 +1,10 @@
 module Cpu(Cpu,
            runCpu, 
-           stepCpu,
-           initCpu,
-           isDead,
-           isDeadAtExec,
+           stepCpu, 
            runCpuInteractive,
-           resetVector) where
+           initCpu,
+           resetVector,
+           isDead,
+           isDeadAtExec) where 
 
 import Cpu.Internal

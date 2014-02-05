@@ -6,7 +6,8 @@ module Cpu.Internal(
     runCpu,
     runCpuInteractive,
     immediateArg,
-    absoluteArgPtr,
+    absoluteArg,
+    absoluteArgPtr,    
     pc,
     status,
     acc,
@@ -17,7 +18,7 @@ module Cpu.Internal(
     absoluteXargPtr,
     updateRegister,
     showCpu,
-    resetVector
+    resetVector,
     isDead,
     isDeadAtExec
 ) where
