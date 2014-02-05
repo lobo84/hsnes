@@ -405,6 +405,21 @@ nop :: OpSize -> Cpu -> Cpu
 nop size cpu@(Cpu mem regs) = Cpu mem newRegs
   where newRegs = updateRegister Pc (pc(regs)+size) regs
 
+bitTstOp :: AddressingMode -> OpSize -> Cpu -> Cpu
+bitTstOp f size cpu@(Cpu mem regs) = Cpu mem newRegs
+  where newRegs = updateRegisters [(Status,newStatus),
+                                 (Pc,newPc)] regs
+        newPc = (pc regs) + size
+        masked = (Data.Bits..&.) (acc regs) memArg
+        newZero = masked == 0
+        newOverflow = readFlag OverFlow memArg
+        newNegative = readFlag Neg memArg
+        memArg = (f cpu)
+        newStatus = updateFlags [(OverFlow,newOverflow),
+                                 (Neg, newNegative),
+                                 (Zero, newZero)] (status regs)
+        
+
 opCodeToFunc :: OpCode -> (Cpu -> Cpu)
 opCodeToFunc 0x18 = clc
 opCodeToFunc 0xD8 = cld
@@ -549,6 +564,10 @@ opCodeToFunc 0x30 = branchOp relativeArg (not . isPositiveState) 2
 opCodeToFunc 0x10 = branchOp relativeArg isPositiveState 2
 
 opCodeToFunc 0x4c = jmpOp absoluteArg 3
+
+opCodeToFunc 0x24 = bitTstOp zeroPageArg 2
+opCodeToFunc 0x2c = bitTstOp absoluteArgPtr 2
+
 opCodeToFunc 0xea = nop 1
 
 opCodeToFunc opCode = error ("op code " ++ (showHex(opCode) "") ++ " Not implemented")
