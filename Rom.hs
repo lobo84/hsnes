@@ -23,15 +23,27 @@ data Header = Header {
   flags7 :: Word8,
   flags9 :: Word8,
   flags10 :: Word8
-  } deriving (Eq, Show)
+  } deriving (Eq)
 
+instance Show Header where
+  show (Header sizePrgRom sizeChrRom sizePrgRam flags6 flags7 flags9 flags10) =
+    "sizePrgRom " ++ show sizePrgRom ++ "\n" ++
+    "sizeChrRom " ++ show sizeChrRom ++ "\n" ++
+    "sizePrgRam " ++ show sizePrgRam
+  
 data Rom = Rom {
   header :: Header,
   trainer :: L.ByteString,
   prgData :: L.ByteString,
   chrData :: L.ByteString
-  } deriving (Eq, Show)
+  } deriving (Eq)
 
+instance Show Rom where
+  show (Rom header trainer prgData chrData) = 
+    "Header:\n" ++ (show header) ++ "\n\n" ++
+    "prgData bytes " ++ (show (L.length prgData)) ++ "\n" ++
+    "chrData bytes " ++ (show (L.length chrData))
+  
 data ParseState = ParseState {
   string :: L.ByteString,
   offset :: Int64
