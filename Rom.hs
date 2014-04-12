@@ -176,7 +176,11 @@ parseP bytes = do
   flags10 <- parseByte    
   parseBytes 5
   trainer <- parseBytesCond (trainerBit flags6) 512
-  prg <- parseBytes (fromIntegral (toByteCount 16 prgSizeRom ))
+  let prgByteCount = (fromIntegral (toByteCount 16 prgSizeRom ))  
+      chrByteCount = (fromIntegral (toByteCount 8 chrSizeRom ))
+  prg <- parseBytes prgByteCount
+  chr <- parseBytes chrByteCount
+
   return (Rom (Header 
                (toByteCount 16 prgSizeRom) 
                (toByteCount 8 chrSizeRom) 
@@ -185,9 +189,9 @@ parseP bytes = do
                flags7
                flags9
                flags10
-              ) 
-          trainer prg L.empty)
-                                         
+              ) trainer prg chr)
+  
+        
   
 parse :: L.ByteString -> Either String Rom
 parse bytes = case runParse (parseP bytes) (ParseState bytes 0) of
