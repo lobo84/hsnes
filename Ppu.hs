@@ -1,14 +1,48 @@
 module Ppu where
 
+
+import Data.List
 import Data.Bits
 import qualified Data.Map as Map
-
+import Data.Word
+import Mem as Mem
 class ToAdress a where
-    toAdress :: a -> Int
+    toAdress :: a -> Word16
 
-data Ppu = Ppu
+type PpuMemory = Memory Word16 Word8
+data Ppu = Ppu {
+  registers :: Registers,
+  memory :: PpuMemory,
+  cycle :: Int,
+  display :: Display
+}
 
-type RegValue = Int
+displayWidth = 256
+displayHeight = 240
+
+
+
+type PixelValue = Int
+type Display = [PixelValue]
+
+
+initDisplay :: Display
+initDisplay = replicate (displayWidth*displayHeight) 0
+        
+type RegValue = Word8
+
+data Registers = Registers {
+  ctrl :: RegValue,
+  mask :: RegValue,
+  status :: RegValue,
+  oamAddr :: RegValue,
+  oamData :: RegValue,
+  scroll :: RegValue,
+  address :: RegValue,
+  pdata :: RegValue
+}
+           
+
 
 data VramAddrInc = 
       Add1Across
@@ -86,12 +120,12 @@ data PPUSTATUS = PPUSTATUS {
                             -- pre-render line.
 } deriving (Show, Eq)
 
-bitToValue :: Int -> Int -> (a, a) -> a
+bitToValue :: Bits b => b -> Int -> (a, a) -> a
 bitToValue reg bit (f, t) = case (testBit reg bit) of
                               False -> f
                               True  -> t
 
-parsePPUCTRL :: Int -> PPUCTRL
+parsePPUCTRL :: RegValue -> PPUCTRL
 parsePPUCTRL d = PPUCTRL generateNMI ppuMasterSlave spriteSize bgPatTblAddr spritePatTblAddr vramAddrInc nameTblBase
   where
     generateNMI      = bitToValue d 7 (False, True)
@@ -106,7 +140,7 @@ parsePPUCTRL d = PPUCTRL generateNMI ppuMasterSlave spriteSize bgPatTblAddr spri
                    (True,  False) -> X2800
                    (True,  True)  -> X2C00
 
-parsePPUMASK :: Int -> PPUMASK
+parsePPUMASK :: RegValue -> PPUMASK
 parsePPUMASK d = PPUMASK intensifyBlues intensifyGreens intensifyReds showSprites showBg showLeftmostSprites showLeftmostBg grayscale
   where
     intensifyBlues       = (testBit d 7)
@@ -118,15 +152,152 @@ parsePPUMASK d = PPUMASK intensifyBlues intensifyGreens intensifyReds showSprite
     showLeftmostBg       = (testBit d 1)
     grayscale            = (testBit d 0)
 
-parsePPUSTATUS :: Int -> PPUSTATUS
+parsePPUSTATUS :: RegValue -> PPUSTATUS
 parsePPUSTATUS d = PPUSTATUS vblankStarted spriteZeroHit spriteOverflow
   where
     vblankStarted  = (testBit d 7)
     spriteZeroHit  = (testBit d 6)
     spriteOverflow = (testBit d 5)
 
-stepPpu :: Ppu -> Ppu
-stepPpu = id
+nametableSize = 960
+attributeTableSize = 64
+type Nametable = [Word8]
+type Attrtable = [Word8]
 
-initPpu :: Ppu
-initPpu = Ppu
+nametableFetch :: Ppu -> Nametable
+nametableFetch ppu = Mem.readMemRange nametable nametableEnd (memory ppu)
+  where nametable = nametableBase ppu
+        nametableEnd = nametable + nametableSize
+
+attributeTableFetch :: Ppu -> Attrtable
+attributeTableFetch ppu = Mem.readMemRange attributeTable attributeTableEnd (memory ppu)
+  where attributeTable = (nametableBase ppu) + nametableEnd + 1
+        attributeTableEnd = attributeTable + attributeTableSize
+        nametableEnd = (nametableBase ppu) + nametableSize
+
+to16BitAddress x = (fromIntegral x)::Word16
+
+colorToPixel :: PatternColor -> Int
+colorToPixel Color1 = 0x1
+colorToPixel Color2 = 0xFF
+colorToPixel Color3 = 0xFFFF
+colorToPixel Color4 = 0xFFFFFF
+
+data PatternColor = Color1 | Color2 | Color3 | Color4
+    deriving (Show, Eq)
+type Pattern = [[PatternColor]]
+type Address = Word16
+
+
+patternToFlatList :: Pattern -> [PatternColor]
+patternToFlatList ps = concat ps
+
+patternTableSize = 0x1FFF+1
+
+patternTableFetchMem :: PpuMemory -> PatTblAddr -> [Pattern]
+patternTableFetchMem mem patTbl = combinedPatterns
+  where patternBase = (toAdress patTbl)
+        addresses = takeWhile (\x -> x < patternTableSize) [m+16 | m <- [0..]]
+        patterns = map (\a -> fetchPattern mem a) addresses 
+        combinedPatterns = map combinePattern patterns
+
+
+patternTableFetch :: PpuMemory -> PatTblAddr -> Nametable -> [Pattern]
+patternTableFetch mem patTbl indexes = combinedPatterns
+  where patternBase = (toAdress patTbl)
+        addresses = map (\i -> (to16BitAddress i)+patternBase) indexes
+        patterns = map (\a -> fetchPattern mem a) addresses 
+        combinedPatterns = map combinePattern patterns
+        
+update :: Int -> a -> [a] -> [a]        
+update n new xs = map (\(x,i) -> if i == n then new else x) (zip xs [0..])
+
+type Coord = (Int,Int)
+setPixel :: Coord -> PixelValue -> Display -> Display
+setPixel (x,y) value display = update (imgIndex (x,y)) value display
+
+imgIndex :: Coord -> Int
+imgIndex (x,y) = (y*displayWidth + x)
+
+
+type Image = [Int]
+
+patternToImage :: Pattern -> Image
+patternToImage p = map colorToPixel (patternToFlatList p)
+
+updateDisplay :: [(Coord,PixelValue)] -> Display -> Display
+updateDisplay ((c,pv):vs) d = updateDisplay vs (setPixel c pv d)
+updateDisplay [] d = d
+
+drawPattern :: Pattern -> Coord -> Display -> Display        
+drawPattern pattern (nx,ny) d = updateDisplay toUpdate d
+ where img = patternToImage pattern
+       imgWidth = 8
+       imgHeight = 8
+       imgPixels = img
+       toUpdate = zip imgCoords imgPixels
+       imgCoords = [(x+nx,y+ny) | y <- [0..imgHeight-1], x <- [0..imgWidth-1]]
+
+
+drawPatterns :: [Pattern] -> Display        
+drawPatterns ps = p15
+  where p1 = drawPattern (ps !! 0) (0,0) initDisplay
+        p2 = drawPattern (ps !! 1) (0,10) p1
+        p3 = drawPattern (ps !! 2) (0,20) p2
+        p4 = drawPattern (ps !! 2) (0,30) p3
+        p5 = drawPattern (ps !! 2) (0,40) p4        
+        p6 = drawPattern (ps !! 2) (0,50) p5        
+        p7 = drawPattern (ps !! 2) (0,60) p6        
+        p8 = drawPattern (ps !! 2) (0,70) p7        
+        p9 = drawPattern (ps !! 2) (0,80) p8        
+        p10 = drawPattern (ps !! 2) (0,90) p9        
+        p11 = drawPattern (ps !! 2) (0,100) p10        
+        p12 = drawPattern (ps !! 2) (0,110) p11        
+        p13 = drawPattern (ps !! 2) (0,120) p12        
+        p14 = drawPattern (ps !! 2) (0,130) p13        
+        p15 = drawPattern (ps !! 2) (0,140) p14        
+
+drawSprites :: Ppu -> Display
+drawSprites ppu = drawPatterns (patternTableFetchMem (memory ppu) patTblAdr)
+  where patTblAdr = bgPatTblAddr ctrlReg
+        ctrlReg = parsePPUCTRL (ctrl (registers ppu))
+  
+combinePattern :: ([Word8], [Word8]) -> Pattern        
+combinePattern (p1,p2) = map (\x -> toPatternColors (fst x) (snd x)) (zip p1 p2)
+
+toPatternColors :: Word8 -> Word8 -> [PatternColor]
+toPatternColors p1 p2 = map toPatternColor (zip (toBits p1) (toBits p2))
+  where toBits x = map (testBit x) [0..7]
+             
+toPatternColor :: (Bool,Bool) -> PatternColor
+toPatternColor (True,True) = Color1
+toPatternColor (False,True) = Color2
+toPatternColor (True,False) = Color3
+toPatternColor (False,False) = Color4  
+
+fetchPattern :: PpuMemory -> Address -> ([Word8],[Word8])
+fetchPattern mem start = (first,second)
+  where first = Mem.readMemRange fstStart fstEnd mem
+        second = Mem.readMemRange sndStart sndEnd mem
+        fstStart = start
+        fstEnd = start+7
+        sndStart = fstEnd+1
+        sndEnd = sndStart+7
+        
+nametableBase :: Ppu -> Word16
+nametableBase ppu = toAdress (nameTblBase (parsePPUCTRL (ctrl (registers ppu))))
+
+stepPpu :: Ppu -> Ppu
+stepPpu ppu = ppu
+  
+initPpu :: PpuMemory -> Ppu
+initPpu mem = Ppu Registers {
+                  ctrl = 0x0,
+                  mask = 0x0,
+                  status = 0x0,
+                  scroll = 0x0,
+                  address = 0x0,
+                  pdata = 0x0,
+                  oamAddr = 0x0,
+                  oamData = 0x0
+                  } mem 0 initDisplay

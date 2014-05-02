@@ -1,5 +1,5 @@
 module Nes (runNesInteractive, step) where
-
+import Nes.Internal
 
 
 

@@ -32,7 +32,7 @@ import Numeric(showHex)
 import Mem
 
 data Cpu = Cpu {
-  memory :: Memory,
+  memory :: Memory Int Int,
   registers :: Registers  
 } deriving Show
 
