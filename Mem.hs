@@ -1,30 +1,36 @@
 module Mem (
     Memory,
     readMem,
+    readMemRange,
     writeMem,
     initMem
 ) where
 
-import Data.Map as M
+import qualified Data.Map as M
+import Data.Bits
 
 
-type Memory = M.Map Int Int
+type Memory addr value = M.Map addr value
 
-isMirror :: Int -> Bool
+
 isMirror addr = 0x2008 <= addr && addr <= 0x3FFF
 
-toMirrorBase :: Int -> Int
+
 toMirrorBase addr = (0x2000 + addr `mod` 8)
 
-readMem :: Int -> Memory -> Int
+
 readMem addr mem
     | isMirror addr = readMem (toMirrorBase addr) mem
-    | otherwise     = findWithDefault 0 addr mem
+    | otherwise     = M.findWithDefault 0 addr mem
   
-writeMem :: Int -> Int -> Memory -> Memory
+readMemRange baseAddr end mem
+  | end < baseAddr = error "invalid range"
+  | otherwise = map (\a -> readMem a mem) [baseAddr..end]
+  
+
 writeMem addr value mem
     | isMirror addr = writeMem (toMirrorBase addr) value mem
     | otherwise     = M.insert addr value mem
 
-initMem :: [(Int, Int)] -> Memory
-initMem mem = Prelude.foldr (\x m -> writeMem (fst x) (snd x) m) empty mem
+
+initMem mem = Prelude.foldr (\x m -> writeMem (fst x) (snd x) m) M.empty mem
