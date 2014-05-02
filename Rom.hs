@@ -2,6 +2,7 @@ module Rom
        (Rom,
         Header,
         sizePrgRom,
+        chrData,
         prgData,
         header,
         parse
