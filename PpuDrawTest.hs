@@ -20,9 +20,9 @@ import qualified Data.Map as M
 --main = do   
 
 
-screenWidth  = Ppu.displayWidth
-screenHeight = Ppu.displayHeight
-screenBpp    = 32
+screenWidth  = 1000 --fromIntegral Ppu.displayWidth
+screenHeight = 1000 --fromIntegral Ppu.displayHeight
+screenBpp    = 8
 
 getPixel32 :: Int -> Int -> Surface -> IO Pixel
 getPixel32 x y s = do
@@ -36,7 +36,7 @@ putPixel32 x y (Pixel pixel) s = do
 
 initEnv :: Rom -> IO ()
 initEnv rom = do    
-    screen <- setVideoMode screenWidth screenHeight screenBpp [SWSurface]
+    screen <- setVideoMode screenWidth screenHeight screenBpp [HWSurface, Resizable]
     setCaption "Flip Test" []
     drawPpu rom screen
     Graphics.UI.SDL.flip screen
@@ -56,8 +56,14 @@ whileEvents act = do
             act event
             whileEvents act
 
-drawDisplay :: [((Int,Int),Int)] -> Surface -> IO ()
-drawDisplay ps s = sequence_ (map (\((x,y),v) -> putPixel32 x y (Pixel (fromIntegral v)) s) ps)
+psize = 2
+
+drawDisplay :: Ppu.Display -> Surface -> IO ()
+drawDisplay ps s = sequence_ (putPixels)
+  where putPixels = map (\((x,y),v) -> draw x y v) (M.assocs ps)
+--        draw x y v = putPixel32 x y (Pixel (fromIntegral v)) s
+        rect x y = Just (Rect (x*psize) (y*psize) psize psize)
+        draw x y v = fillRect s (rect x y) (Pixel (fromIntegral v))        
 
 drawPpu :: Rom -> Surface -> IO ()
 drawPpu rom screen = drawDisplay (toPixels rom) screen
@@ -81,8 +87,8 @@ main = withInit [InitEverything] $ do -- withInit calls quit for us.
     return()    
 
 
-toPixels :: Rom -> [((Int,Int),Int)]
+toPixels :: Rom -> Ppu.Display
 toPixels rom = display
   where ppu = Ppu.initPpu (Mem.initMem (zip [0..] (L.unpack mem)))
         mem = Rom.chrData rom
-        display = zip [(x,y) | y <- [0..Ppu.displayHeight-1], x <- [0..Ppu.displayWidth-1]] (Ppu.drawSprites ppu)
+        display = Ppu.drawSprites ppu

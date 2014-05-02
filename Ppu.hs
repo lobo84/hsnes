@@ -1,11 +1,12 @@
 module Ppu where
 
-
+import Debug.Trace
 import Data.List
 import Data.Bits
 import qualified Data.Map as Map
 import Data.Word
 import Mem as Mem
+import qualified Data.Map as M
 class ToAdress a where
     toAdress :: a -> Word16
 
@@ -23,11 +24,11 @@ displayHeight = 240
 
 
 type PixelValue = Int
-type Display = [PixelValue]
+type Display = M.Map (Int,Int) PixelValue
 
 
 initDisplay :: Display
-initDisplay = replicate (displayWidth*displayHeight) 0
+initDisplay = M.empty
         
 type RegValue = Word8
 
@@ -178,10 +179,10 @@ attributeTableFetch ppu = Mem.readMemRange attributeTable attributeTableEnd (mem
 to16BitAddress x = (fromIntegral x)::Word16
 
 colorToPixel :: PatternColor -> Int
-colorToPixel Color1 = 0x1
-colorToPixel Color2 = 0xFF
-colorToPixel Color3 = 0xFFFF
-colorToPixel Color4 = 0xFFFFFF
+colorToPixel Color1 = 0
+colorToPixel Color2 = 255
+colorToPixel Color3 = 300
+colorToPixel Color4 = 100
 
 data PatternColor = Color1 | Color2 | Color3 | Color4
     deriving (Show, Eq)
@@ -197,7 +198,7 @@ patternTableSize = 0x1FFF+1
 patternTableFetchMem :: PpuMemory -> PatTblAddr -> [Pattern]
 patternTableFetchMem mem patTbl = combinedPatterns
   where patternBase = (toAdress patTbl)
-        addresses = takeWhile (\x -> x < patternTableSize) [m+16 | m <- [0..]]
+        addresses = takeWhile (\x -> x < patternTableSize) [patternBase+m*16 | m <- [0..]]
         patterns = map (\a -> fetchPattern mem a) addresses 
         combinedPatterns = map combinePattern patterns
 
@@ -209,12 +210,12 @@ patternTableFetch mem patTbl indexes = combinedPatterns
         patterns = map (\a -> fetchPattern mem a) addresses 
         combinedPatterns = map combinePattern patterns
         
-update :: Int -> a -> [a] -> [a]        
-update n new xs = map (\(x,i) -> if i == n then new else x) (zip xs [0..])
+update :: Coord -> PixelValue -> Display -> Display
+update n new d = M.insert n new d
 
 type Coord = (Int,Int)
 setPixel :: Coord -> PixelValue -> Display -> Display
-setPixel (x,y) value display = update (imgIndex (x,y)) value display
+setPixel (x,y) value display = update (x,y) value display
 
 imgIndex :: Coord -> Int
 imgIndex (x,y) = (y*displayWidth + x)
@@ -240,26 +241,14 @@ drawPattern pattern (nx,ny) d = updateDisplay toUpdate d
 
 
 drawPatterns :: [Pattern] -> Display        
-drawPatterns ps = p15
-  where p1 = drawPattern (ps !! 0) (0,0) initDisplay
-        p2 = drawPattern (ps !! 1) (0,10) p1
-        p3 = drawPattern (ps !! 2) (0,20) p2
-        p4 = drawPattern (ps !! 2) (0,30) p3
-        p5 = drawPattern (ps !! 2) (0,40) p4        
-        p6 = drawPattern (ps !! 2) (0,50) p5        
-        p7 = drawPattern (ps !! 2) (0,60) p6        
-        p8 = drawPattern (ps !! 2) (0,70) p7        
-        p9 = drawPattern (ps !! 2) (0,80) p8        
-        p10 = drawPattern (ps !! 2) (0,90) p9        
-        p11 = drawPattern (ps !! 2) (0,100) p10        
-        p12 = drawPattern (ps !! 2) (0,110) p11        
-        p13 = drawPattern (ps !! 2) (0,120) p12        
-        p14 = drawPattern (ps !! 2) (0,130) p13        
-        p15 = drawPattern (ps !! 2) (0,140) p14        
-
+drawPatterns ps = foldr (\(p,(x,y)) -> drawPattern p (x,y)) initDisplay sprites
+  where sprites = zip ps coords
+        coords = [(x*8,y*8) | y <- [0..23] , x <- [0..15]]
+  
 drawSprites :: Ppu -> Display
 drawSprites ppu = drawPatterns (patternTableFetchMem (memory ppu) patTblAdr)
-  where patTblAdr = bgPatTblAddr ctrlReg
+  where patTblAdr = trace (show tblAddr) tblAddr
+        tblAddr = (bgPatTblAddr ctrlReg)
         ctrlReg = parsePPUCTRL (ctrl (registers ppu))
   
 combinePattern :: ([Word8], [Word8]) -> Pattern        
@@ -267,7 +256,7 @@ combinePattern (p1,p2) = map (\x -> toPatternColors (fst x) (snd x)) (zip p1 p2)
 
 toPatternColors :: Word8 -> Word8 -> [PatternColor]
 toPatternColors p1 p2 = map toPatternColor (zip (toBits p1) (toBits p2))
-  where toBits x = map (testBit x) [0..7]
+  where toBits x = map (testBit x) (reverse [0..7])
              
 toPatternColor :: (Bool,Bool) -> PatternColor
 toPatternColor (True,True) = Color1
@@ -292,7 +281,7 @@ stepPpu ppu = ppu
   
 initPpu :: PpuMemory -> Ppu
 initPpu mem = Ppu Registers {
-                  ctrl = 0x0,
+                  ctrl = 0x00,
                   mask = 0x0,
                   status = 0x0,
                   scroll = 0x0,
