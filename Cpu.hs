@@ -5,6 +5,14 @@ module Cpu(Cpu,
            initCpu,
            resetVector,
            isDead,
+           registers,
+           pc,
+           x,
+           y,
+           acc,
+           status,
+           sp,
+           cyc,
            isDeadAtExec) where 
 
 import Cpu.Internal
