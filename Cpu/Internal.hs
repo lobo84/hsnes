@@ -128,6 +128,7 @@ readRegister Status regs = status(regs)
 readRegister Acc regs = acc(regs)
 readRegister X regs = x(regs)
 readRegister Y regs = y(regs)
+readRegister Sp regs = sp(regs)
 
 clc :: Cpu -> Cpu
 clc = updateFlagOp Carry False 
@@ -340,8 +341,8 @@ shiftOp aluOp bitPos f size cpu = Cpu mem newRegs 0
         regs = registers cpu
 
 
-transferOp :: RegisterType -> RegisterType -> OpSize -> Cpu -> Cpu
-transferOp from to size cpu = Cpu mem newRegs 0
+transferOp :: RegisterType -> RegisterType -> OpSize -> Cyc -> Cpu -> Cpu
+transferOp from to size c cpu = Cpu mem newRegs newC
   where newRegs = updateRegisters [(to, fromValue), 
                                 (Pc,pc(regs) + size),
                                 (Status, newStatus)] regs
@@ -349,6 +350,7 @@ transferOp from to size cpu = Cpu mem newRegs 0
         newStatus = updateStatusFlagsNumericOp (status(regs)) fromValue
         mem = memory cpu
         regs = registers cpu
+        newC = (cyc cpu) + c
         
 andOp :: AddressingMode -> OpSize -> Cyc -> Cpu -> Cpu
 andOp = bitOp (Data.Bits..&.)
@@ -661,12 +663,12 @@ opCodeToFunc 0x84 = stOp Y zeroPageArg 2 3
 opCodeToFunc 0x94 = stOp Y zeroPageYArg 2 4
 opCodeToFunc 0x8c = stOp Y absoluteArgPtr 3 4
 
-opCodeToFunc 0xaa = transferOp Acc X 1
-opCodeToFunc 0xa8 = transferOp Acc Y 1
-opCodeToFunc 0xba = transferOp Sp X 1
-opCodeToFunc 0x8a = transferOp X Acc 1
-opCodeToFunc 0x9a = transferOp X Sp 1
-opCodeToFunc 0x98 = transferOp Y Acc 1
+opCodeToFunc 0xaa = transferOp Acc X 1 2
+opCodeToFunc 0xa8 = transferOp Acc Y 1 2
+opCodeToFunc 0xba = transferOp Sp X  1 2
+opCodeToFunc 0x8a = transferOp X Acc 1 2
+opCodeToFunc 0x9a = transferOp X Sp  1 2
+opCodeToFunc 0x98 = transferOp Y Acc 1 2
 
 opCodeToFunc 0x48 = pushOp Acc 1 3
 opCodeToFunc 0x08 = pushOp Status 1 3
