@@ -181,14 +181,16 @@ immediateArg :: Cpu -> Int
 immediateArg = fstArg
 
 absoluteArgPtr :: Cpu -> Int
-absoluteArgPtr cpu = readMem (absoluteArg cpu) mem
+absoluteArgPtr cpu = readMem address mem
   where mem = memory cpu
-        regs = registers cpu
+        address = (absoluteArg cpu)
+        --regs = registers cpu
+        --temp = readMem 0x0180 mem
         
 absoluteArg :: Cpu -> Int
 absoluteArg cpu = args16Address cpu
-  where mem = memory cpu
-        regs = registers cpu
+--  where mem = memory cpu
+--        regs = registers cpu
         
 args16Address :: Cpu -> Address
 args16Address cpu = toAddress (secArg(cpu)) (fstArg(cpu))
@@ -274,8 +276,8 @@ adcOp f size c cpu = Cpu mem newRegs newC
         newPc = pc(regs) + size
         newAccStatus = updateStatusFlagsNumericOp (status(regs)) newAcc        
         newStatus = updateFlags [(Carry,carryFlag), (OverFlow,overflFlag)] newAccStatus
-        carryFlag = (trace (show (acc1, acc2, oldCarryFlag)) addWillCarry) acc1 acc2 oldCarryFlag
-        overflFlag = (trace (show (acc1, acc2, oldCarryFlag)) addWillOverflow) acc1 acc2 oldCarryFlag
+        carryFlag = addWillCarry acc1 acc2 oldCarryFlag
+        overflFlag = addWillOverflow acc1 acc2 oldCarryFlag
         mem = memory cpu
         regs = registers cpu
         newC = (cyc cpu) + c
@@ -291,8 +293,8 @@ sbcOp f size c cpu = Cpu mem newRegs newC
         newPc = pc(regs) + size
         newAccStatus = updateStatusFlagsNumericOp (status(regs)) newAcc        
         newStatus = updateFlags [(Carry,not carryFlag), (OverFlow,overflFlag)] newAccStatus
-        carryFlag = (trace  ("c" ++ (show (acc1, acc2, oldCarryFlag))) subWillCarry) acc1 acc2 oldCarryFlag
-        overflFlag = (trace ("v" ++ (show (acc1, acc2, oldCarryFlag))) subWillOverflow) acc1 acc2 oldCarryFlag
+        carryFlag = subWillCarry acc1 acc2 oldCarryFlag
+        overflFlag = subWillOverflow acc1 acc2 oldCarryFlag
         mem = memory cpu
         regs = registers cpu
         newC = (cyc cpu) + c
@@ -347,7 +349,9 @@ transferOp from to size c cpu = Cpu mem newRegs newC
                                 (Pc,pc(regs) + size),
                                 (Status, newStatus)] regs
         fromValue = readRegister from regs
-        newStatus = updateStatusFlagsNumericOp (status(regs)) fromValue
+        newStatus = if to == Sp
+                    then status(regs) -- no change if TXS
+                    else updateStatusFlagsNumericOp (status(regs)) fromValue
         mem = memory cpu
         regs = registers cpu
         newC = (cyc cpu) + c
@@ -426,7 +430,7 @@ rtsOp c cpu = Cpu mem newRegs newC
 pull :: RegisterType -> Cpu -> Cpu
 pull regType cpu = Cpu mem newRegs 0
   where stackValue = readMem (sp(regs)+1) mem
-        newRegs = (trace (show (regType,stackValue)) updateRegisters) [(regType,stackValue),
+        newRegs = updateRegisters [(regType,stackValue),
                                    (Sp, sp(regs)+1)] regs
         mem = memory cpu
         regs = registers cpu
@@ -451,7 +455,7 @@ pushAddr addr cpu = push addrLow (push addrHigh cpu)
   
 push :: Int -> Cpu -> Cpu                                     
 push value cpu = cpu{memory=newMem,registers=newRegs}
-  where newMem = writeMem (trace (show (spValue, value)) spValue) value mem
+  where newMem = writeMem spValue value mem
         spValue = sp(regs)
         newRegs = updateRegister Sp (spValue-1) regs
         mem = memory cpu
@@ -635,11 +639,11 @@ opCodeToFunc 0xb9 = ldOp Acc absoluteYargPtr 3 4
 opCodeToFunc 0xa1 = ldOp Acc indirectXarg 2 6 
 opCodeToFunc 0xb1 = ldOp Acc indirectYarg 2 5
 
-opCodeToFunc 0xa2 = ldOp X immediateArg 2 2
-opCodeToFunc 0xa6 = ldOp X zeroPageArg 2 3
-opCodeToFunc 0xb6 = ldOp X zeroPageYArg 2 4
-opCodeToFunc 0xae = ldOp X absoluteArgPtr 3 4
-opCodeToFunc 0xbe = ldOp X absoluteYargPtr 3 4
+opCodeToFunc 0xa2 = ldOp X immediateArg    2 2
+opCodeToFunc 0xa6 = ldOp X zeroPageArg     2 3
+opCodeToFunc 0xb6 = ldOp X zeroPageYArg    2 4
+opCodeToFunc 0xae = ldOp X absoluteArgPtr  3 4
+opCodeToFunc 0xbe = ldOp X absoluteYargPtr 3 4 -- +1
 
 opCodeToFunc 0xa0 = ldOp Y immediateArg 2 2
 opCodeToFunc 0xa4 = ldOp Y zeroPageArg 2 3
@@ -657,7 +661,7 @@ opCodeToFunc 0x91 = stOp Acc indirectYarg 2 6
 
 opCodeToFunc 0x86 = stOp X zeroPageArg 2 3
 opCodeToFunc 0x96 = stOp X zeroPageYArg 2 4
-opCodeToFunc 0x8e = stOp X absoluteArgPtr 3 4
+opCodeToFunc 0x8e = stOp X absoluteArg 3 4
 
 opCodeToFunc 0x84 = stOp Y zeroPageArg 2 3 
 opCodeToFunc 0x94 = stOp Y zeroPageYArg 2 4
@@ -743,6 +747,8 @@ stepCpu cpu = (opCodeToFunc (trace (show (addr, code)) opCode)) cpu
   where opCode = nextOpCode cpu
         addr = showHex (pc (registers cpu)) ""
         code = showHex opCode ""
+        mem = memory cpu
+        temp = readMem 0x0180 mem
 
         
 nextOpCode :: Cpu -> Int
