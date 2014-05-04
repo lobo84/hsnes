@@ -151,13 +151,14 @@ addWillOverflow a v c = val == 0x80
         and = (Data.Bits..&.)
 
 subWillCarry :: Int -> Int -> Bool -> Bool
-subWillCarry a v c = s < 0
+subWillCarry a v c = newCarry
   where s = a - v - (1 - cInt)
         cInt = if c then 1 else 0
+        newCarry = if (s < 0) then True else False
 
 subWillOverflow :: Int -> Int -> Bool -> Bool
 subWillOverflow a v c = val == 0x80
-  where val = and (and (xor a s) (xor v s)) 0x80
+  where val = and (and (xor a s) (xor (255 - v) s)) 0x80
         s = a - v - (1 - cInt)
         cInt = if c then 1 else 0
         and = (Data.Bits..&.)
@@ -255,11 +256,11 @@ sub8c :: Int -> Int -> Int -> Int
 sub8c a v c = mod (a - v - (1-c)) 256
 
 updateStatusFlagsNumericOp :: RegValue -> RegValue -> RegValue
-updateStatusFlagsNumericOp currentStatus newAcc = newStatus
+updateStatusFlagsNumericOp currentStatus newValue = newStatus
   where newStatus = updateFlags [(Zero,zeroFlag),
                                  (Neg,negFlag)] currentStatus
-        zeroFlag = newAcc == 0
-        negFlag = testBit newAcc 7
+        zeroFlag = newValue == 0
+        negFlag = testBit newValue 7
 
 adcOp :: AddressingMode -> OpSize -> Cyc -> Cpu -> Cpu
 adcOp f size c cpu = Cpu mem newRegs newC
@@ -463,16 +464,17 @@ updateFlagOp flag value cpu = Cpu (memory(cpu)) newRegs newC
         statusValue = updateFlag flag value (status(regs))         
         newC = (cyc cpu) + 2
         
-incOp :: RegisterType -> Int -> Int -> Cpu -> Cpu        
-incOp regType value size cpu = Cpu mem newRegs 0
+incOp :: RegisterType -> Int -> Int -> Cyc -> Cpu -> Cpu        
+incOp regType value size c cpu = Cpu mem newRegs newC
   where newRegs = updateRegisters [(regType, newRegValue),
                                    (Pc,pc(regs)+size),
                                    (Status,newStatus)] regs
-        newRegValue = oldRegValue + value
+        newRegValue = mod (oldRegValue + value) 256 
         oldRegValue = readRegister regType regs
-        newStatus = updateStatusFlagsNumericOp (status(regs)) oldRegValue
+        newStatus = updateStatusFlagsNumericOp (status(regs)) newRegValue
         mem = memory cpu
         regs = registers cpu
+        newC = (cyc cpu) + c
 
 cmpOp :: AddressingMode -> RegisterType -> OpSize -> Cyc -> Cpu -> Cpu
 cmpOp f regType size c cpu = Cpu mem newRegs newC
@@ -692,10 +694,10 @@ opCodeToFunc 0xc0 = cmpOp immediateArg   Y 2 2
 opCodeToFunc 0xc4 = cmpOp zeroPageArg    Y 2 3
 opCodeToFunc 0xcc = cmpOp absoluteArgPtr Y 3 4
 
-opCodeToFunc 0xe8 = incOp X   1  1
-opCodeToFunc 0xc8 = incOp Y   1  1
-opCodeToFunc 0xca = incOp X (-1) 1 
-opCodeToFunc 0x88 = incOp Y (-1) 1
+opCodeToFunc 0xe8 = incOp X   1  1 2
+opCodeToFunc 0xc8 = incOp Y   1  1 2
+opCodeToFunc 0xca = incOp X (-1) 1 2
+opCodeToFunc 0x88 = incOp Y (-1) 1 2
 
 opCodeToFunc 0xf0 = branchOp relativeArg isZeroState 2
 opCodeToFunc 0xd0 = branchOp relativeArg (not . isZeroState) 2
