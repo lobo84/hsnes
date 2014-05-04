@@ -138,9 +138,29 @@ sec = updateFlagOp Carry True
 sed = updateFlagOp DecMode True
 sei = updateFlagOp IrqDis True
 
-isOverflow :: Int -> Int -> Bool
-isOverflow a b = abSum > 255
-  where abSum = (fromIntegral(a)::Int) + (fromIntegral(b)::Int)
+addWillCarry :: Int -> Int -> Bool -> Bool
+addWillCarry a v c = s > 255
+  where s = a + v + cInt
+        cInt = if c then 1 else 0
+
+addWillOverflow :: Int -> Int -> Bool -> Bool
+addWillOverflow a v c = val == 0x80
+  where val = and (and (xor a s) (xor v s)) 0x80
+        s = a + v + cInt
+        cInt = if c then 1 else 0
+        and = (Data.Bits..&.)
+
+subWillCarry :: Int -> Int -> Bool -> Bool
+subWillCarry a v c = s < 0
+  where s = a - v - (1 - cInt)
+        cInt = if c then 1 else 0
+
+subWillOverflow :: Int -> Int -> Bool -> Bool
+subWillOverflow a v c = val == 0x80
+  where val = and (and (xor a s) (xor v s)) 0x80
+        s = a - v - (1 - cInt)
+        cInt = if c then 1 else 0
+        and = (Data.Bits..&.)
 
 fstArg :: Cpu -> Int
 fstArg cpu = readMem (pc(registers cpu)+1) (memory cpu)
@@ -222,15 +242,17 @@ toAddress a b = (Data.Bits..|.) (Data.Bits.shiftL a 8) b
 fromAddress :: Int -> (Int,Int)
 fromAddress value = (shiftR ((Data.Bits..&.) 0xFF00 value) 8,(Data.Bits..&.) 0x00FF value)
         
-add8 :: Int -> Int -> Int
-add8 a b = mod (a + b) 256
+add8 :: Int -> Int -> Int -> Int
+add8 a v c = mod (a + v + c) 256
 
 add16 :: Int -> Int -> Int
 add16 a b = mod (a + b) 65536
 
-
 sub8 :: Int -> Int -> Int
 sub8 a b = mod (a - b) 256
+
+sub8c :: Int -> Int -> Int -> Int
+sub8c a v c = mod (a - v - (1-c)) 256
 
 updateStatusFlagsNumericOp :: RegValue -> RegValue -> RegValue
 updateStatusFlagsNumericOp currentStatus newAcc = newStatus
@@ -239,18 +261,39 @@ updateStatusFlagsNumericOp currentStatus newAcc = newStatus
         zeroFlag = newAcc == 0
         negFlag = testBit newAcc 7
 
-adcOp :: AddressingMode -> OpSize -> Cpu -> Cpu
-adcOp f size cpu = Cpu mem newRegs 0
+adcOp :: AddressingMode -> OpSize -> Cyc -> Cpu -> Cpu
+adcOp f size c cpu = Cpu mem newRegs newC
   where newRegs = regs {acc=newAcc, pc=newPc, status=newStatus}
-        newAcc = add8 acc1 acc2 
+        newAcc = add8 acc1 acc2 oldCarryInt
+        oldCarryInt = if oldCarryFlag then 1 else 0
+        oldCarryFlag = readFlag Carry (status regs)
         acc1 = acc(regs)
         acc2 = f cpu
         newPc = pc(regs) + size
         newAccStatus = updateStatusFlagsNumericOp (status(regs)) newAcc        
-        newStatus = updateFlag Carry carryFlag newAccStatus
-        carryFlag = isOverflow acc1 acc2
+        newStatus = updateFlags [(Carry,carryFlag), (OverFlow,overflFlag)] newAccStatus
+        carryFlag = (trace (show (acc1, acc2, oldCarryFlag)) addWillCarry) acc1 acc2 oldCarryFlag
+        overflFlag = (trace (show (acc1, acc2, oldCarryFlag)) addWillOverflow) acc1 acc2 oldCarryFlag
         mem = memory cpu
         regs = registers cpu
+        newC = (cyc cpu) + c
+
+sbcOp :: AddressingMode -> OpSize -> Cyc -> Cpu -> Cpu
+sbcOp f size c cpu = Cpu mem newRegs newC
+  where newRegs = regs {acc=newAcc, pc=newPc, status=newStatus}
+        newAcc = sub8c acc1 acc2 oldCarryInt
+        oldCarryInt = if oldCarryFlag then 1 else 0
+        oldCarryFlag = readFlag Carry (status regs)
+        acc1 = acc(regs)
+        acc2 = f cpu
+        newPc = pc(regs) + size
+        newAccStatus = updateStatusFlagsNumericOp (status(regs)) newAcc        
+        newStatus = updateFlags [(Carry,not carryFlag), (OverFlow,overflFlag)] newAccStatus
+        carryFlag = (trace  ("c" ++ (show (acc1, acc2, oldCarryFlag))) subWillCarry) acc1 acc2 oldCarryFlag
+        overflFlag = (trace ("v" ++ (show (acc1, acc2, oldCarryFlag))) subWillOverflow) acc1 acc2 oldCarryFlag
+        mem = memory cpu
+        regs = registers cpu
+        newC = (cyc cpu) + c
 
 ldOp ::  RegisterType -> AddressingMode -> OpSize -> Cyc -> Cpu -> Cpu
 ldOp rType f size c cpu = Cpu mem newRegs newC
@@ -527,12 +570,12 @@ opCodeToFunc 0x38 = sec
 opCodeToFunc 0xF8 = sed
 opCodeToFunc 0x78 = sei
 
-opCodeToFunc 0x69 = adcOp immediateArg 2
-opCodeToFunc 0x6d = adcOp absoluteArgPtr 3 
-opCodeToFunc 0x7d = adcOp absoluteXargPtr 3
-opCodeToFunc 0x79 = adcOp absoluteYargPtr 3
-opCodeToFunc 0x65 = adcOp zeroPageArg 2
-opCodeToFunc 0x75 = adcOp zeroPageXArg 2
+opCodeToFunc 0x69 = adcOp immediateArg    2 2
+opCodeToFunc 0x65 = adcOp zeroPageArg     2 3
+opCodeToFunc 0x75 = adcOp zeroPageXArg    2 4
+opCodeToFunc 0x6d = adcOp absoluteArgPtr  3 4
+opCodeToFunc 0x7d = adcOp absoluteXargPtr 3 4 -- +1 
+opCodeToFunc 0x79 = adcOp absoluteYargPtr 3 4 -- +1 
 
 opCodeToFunc 0x29 = andOp immediateArg 2 2
 opCodeToFunc 0x25 = andOp zeroPageArg 2 3
@@ -649,9 +692,9 @@ opCodeToFunc 0xc0 = cmpOp immediateArg   Y 2 2
 opCodeToFunc 0xc4 = cmpOp zeroPageArg    Y 2 3
 opCodeToFunc 0xcc = cmpOp absoluteArgPtr Y 3 4
 
-opCodeToFunc 0xe8 = incOp X 1 1
-opCodeToFunc 0xc8 = incOp Y 1 1
-opCodeToFunc 0xca = incOp X (-1) 1
+opCodeToFunc 0xe8 = incOp X   1  1
+opCodeToFunc 0xc8 = incOp Y   1  1
+opCodeToFunc 0xca = incOp X (-1) 1 
 opCodeToFunc 0x88 = incOp Y (-1) 1
 
 opCodeToFunc 0xf0 = branchOp relativeArg isZeroState 2
@@ -669,6 +712,13 @@ opCodeToFunc 0x24 = bitTstOp zeroPageArg 2 3
 opCodeToFunc 0x2c = bitTstOp absoluteArgPtr 2 4
 
 opCodeToFunc 0xea = nop 1
+
+opCodeToFunc 0xe9 = sbcOp immediateArg    2 2
+opCodeToFunc 0xe5 = sbcOp zeroPageArg     2 3
+opCodeToFunc 0xf5 = sbcOp zeroPageXArg    2 4
+opCodeToFunc 0xed = sbcOp absoluteArgPtr  3 4
+opCodeToFunc 0xfd = sbcOp absoluteXargPtr 3 4 -- +1 
+opCodeToFunc 0xf9 = sbcOp absoluteYargPtr 3 4 -- +1 
 
 opCodeToFunc opCode = error ("op code " ++ (showHex(opCode) "") ++ " Not implemented")
 
