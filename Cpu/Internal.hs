@@ -108,7 +108,7 @@ updateFlag flag False regValue = clearBit regValue (flagPos flag)
 resetVector :: Int
 resetVector = 0xFFFC
 stackStart = 0xFD
-stackEnd = 0x1FF
+stackBase = 0x100
 
 updateRegister :: RegisterType -> RegValue -> Registers -> Registers
 updateRegister Pc value regs = regs{pc=value} 
@@ -331,8 +331,8 @@ bitOp aluOp f size c cpu = Cpu mem newRegs newC
         regs = registers cpu
         newC = (cyc cpu) + c
 
-shiftOp :: AccFuncOneArg -> BitPos -> AddressingMode -> OpSize -> Cpu -> Cpu
-shiftOp aluOp bitPos f size cpu = Cpu mem newRegs 0
+shiftOp :: AccFuncOneArg -> BitPos -> AddressingMode -> OpSize -> Cyc -> Cpu -> Cpu
+shiftOp aluOp bitPos f size c cpu = Cpu mem newRegs newC
   where newRegs = regs {acc=newAcc, pc=newPc, status=newStatus}
         newAcc = aluOp (f cpu)
         newPc = pc(regs) + size
@@ -341,6 +341,7 @@ shiftOp aluOp bitPos f size cpu = Cpu mem newRegs 0
         carryFlag = testBit (acc(regs)) bitPos
         mem = memory cpu
         regs = registers cpu
+        newC = (cyc cpu) + c
 
 
 transferOp :: RegisterType -> RegisterType -> OpSize -> Cyc -> Cpu -> Cpu
@@ -365,20 +366,20 @@ eorOp = bitOp xor
 oraOp :: AddressingMode -> OpSize -> Cyc -> Cpu -> Cpu
 oraOp = bitOp (.|.)
 
-aslOp :: AddressingMode -> OpSize -> Cpu -> Cpu
+aslOp :: AddressingMode -> OpSize -> Cyc -> Cpu -> Cpu
 aslOp = shiftOp ((flip shiftL) 1) 7
 
-lsrOp :: AddressingMode -> OpSize -> Cpu -> Cpu
+lsrOp :: AddressingMode -> OpSize -> Cyc -> Cpu -> Cpu
 lsrOp = shiftOp ((flip shiftR) 1) 0
 
-rolOp :: AddressingMode -> OpSize -> Cpu -> Cpu
+rolOp :: AddressingMode -> OpSize -> Cyc -> Cpu -> Cpu
 rolOp = shiftOp ((flip rotateL) 1) 7
 
-rorOp :: AddressingMode -> OpSize -> Cpu -> Cpu
+rorOp :: AddressingMode -> OpSize -> Cyc -> Cpu -> Cpu
 rorOp = shiftOp ((flip rotateR) 1) 0
 
 pushOp :: RegisterType -> OpSize -> Cyc -> Cpu -> Cpu
-pushOp regType size c cpu = push pushValue (Cpu mem newRegs newC)
+pushOp regType size c cpu = push pushValue newC (Cpu mem newRegs newC)
   where regValue = readRegister regType newRegs
         pushValue = if regType == Status 
                     then updateFlags [(BrkCommand,True),(Bit5,True)] regValue
@@ -408,30 +409,46 @@ pullMergeReg oldReg pulledReg = or (and oldReg 0x30) (and pulledReg 0xCF)
     and = (Data.Bits..&.)
     or = (.|.)
 
+--(trace ("JSR " ++ (showHex returnPoint "")) Cpu)
 jsrOp :: AddressingMode -> OpSize -> Cyc -> Cpu -> Cpu                         
 jsrOp f size c cpu = Cpu newMem newRegs newC
-  where returnPoint = pc(regs)
-        pushed = pushAddr returnPoint cpu
+  where returnPoint = pc(regs) + size - 1
+        pushed = pushAddr (returnPoint) cpu
         newMem = memory(pushed)
         newRegs = updateRegister Pc jumpTo (registers(pushed))
         jumpTo = f cpu
-        mem = memory cpu
+        --mem = memory cpu
         regs = registers cpu
         newC = (cyc cpu) + c
-        
+
 rtsOp :: Cyc -> Cpu -> Cpu
 rtsOp c cpu = Cpu mem newRegs newC
   where mem = memory cpu
-        regs = registers cpu
-        newC = (cyc cpu) + 6
-        newRegs =  updateRegister Pc (pc(pulledRegs)+3) pulledRegs
+        newC = (cyc cpu) + c
+        newRegs =  updateRegister Pc (pc(pulledRegs)+1) pulledRegs
           where pulledRegs = registers(pullPc cpu)
         
+rtiOp :: Cyc -> Cpu -> Cpu
+rtiOp c cpu = Cpu mem newRegs newC
+  where mem = memory cpu
+        newC = (cyc cpu) + c
+        statusCpu = pull Status cpu
+        oldRegs = registers cpu
+        oldReg = readRegister Status oldRegs
+        newReg = readRegister Status (registers statusCpu)
+        newStatus = (pullMergeReg oldReg newReg)
+        newRegs =  updateRegisters [(Pc, (pc(pulledRegs))), (Status, newStatus)] pulledRegs
+          where
+              pulledRegs = registers(pullPc statusCpu)
+        
+        -- (trace ("PULL " ++ (showHex stackValue "") ++ " FROM " ++ (showHex spValue "")) Cpu)
 pull :: RegisterType -> Cpu -> Cpu
 pull regType cpu = Cpu mem newRegs 0
-  where stackValue = readMem (sp(regs)+1) mem
+  where stackValue = readMem (newSp + stackBase) mem
         newRegs = updateRegisters [(regType,stackValue),
-                                   (Sp, sp(regs)+1)] regs
+                                   (Sp, newSp)] regs
+        spValue = sp(regs)
+        newSp = mod (spValue + 1) 256
         mem = memory cpu
         regs = registers cpu
                   
@@ -439,25 +456,29 @@ pull regType cpu = Cpu mem newRegs 0
 pullPc :: Cpu -> Cpu        
 pullPc cpu = Cpu mem newRegs 0
   where newRegs = updateRegisters [(Pc,stackValue),
-                                   (Sp, sp(regs)+2)] regs
+                                   (Sp, spValueHigh)] regs
         stackValue = toAddress high low
-        low = readMem (sp(regs)+1) mem
-        high = readMem (sp(regs)+2) mem
+        spValueLow = mod (sp(regs) +1) 256
+        spValueHigh = mod (spValueLow + 1) 256
+        --newSp = mod (spValueLow + 1) 256
+        low = readMem (spValueLow + stackBase) mem
+        high = readMem (spValueHigh + stackBase) mem
         mem = memory cpu
         regs = registers cpu
                          
 
 pushAddr :: Int -> Cpu -> Cpu
-pushAddr addr cpu = push addrLow (push addrHigh cpu) 
+pushAddr addr cpu = push addrLow 0 (push addrHigh 0 cpu)
   where addrHigh = fst(fromAddress(addr))
         addrLow = snd(fromAddress(addr))
 
-  
-push :: Int -> Cpu -> Cpu                                     
-push value cpu = cpu{memory=newMem,registers=newRegs}
-  where newMem = writeMem spValue value mem
+  -- (trace ("PUSH " ++ (showHex value "") ++ " TO " ++ (showHex spValue "")) Cpu)
+push :: Int -> Cyc -> Cpu -> Cpu                                     
+push value c cpu = Cpu newMem newRegs c
+  where newMem = writeMem (spValue + stackBase) value mem
         spValue = sp(regs)
-        newRegs = updateRegister Sp (spValue-1) regs
+        newRegs = updateRegister Sp newSp regs
+        newSp = mod (spValue - 1) 256
         mem = memory cpu
         regs = registers cpu
         
@@ -606,29 +627,29 @@ opCodeToFunc 0x0d = oraOp absoluteArgPtr 3 4
 opCodeToFunc 0x1d = oraOp absoluteXargPtr 3 4 -- +1
 opCodeToFunc 0x19 = oraOp absoluteYargPtr 3 4 -- +1
 
-opCodeToFunc 0x2a = rolOp accumulatorArg 1
-opCodeToFunc 0x26 = rolOp zeroPageArg 2 
-opCodeToFunc 0x36 = rolOp zeroPageXArg 2 
-opCodeToFunc 0x2e = rolOp absoluteArgPtr 3 
-opCodeToFunc 0x3e = rolOp absoluteXargPtr 3
+opCodeToFunc 0x2a = rolOp accumulatorArg  1 2
+opCodeToFunc 0x26 = rolOp zeroPageArg     2 5
+opCodeToFunc 0x36 = rolOp zeroPageXArg    2 6
+opCodeToFunc 0x2e = rolOp absoluteArgPtr  3 6
+opCodeToFunc 0x3e = rolOp absoluteXargPtr 3 7
 
-opCodeToFunc 0x6a = rorOp accumulatorArg 1
-opCodeToFunc 0x66 = rorOp zeroPageArg 2 
-opCodeToFunc 0x76 = rorOp zeroPageXArg 2 
-opCodeToFunc 0x6e = rorOp absoluteArgPtr 3 
-opCodeToFunc 0x7e = rorOp absoluteXargPtr 3
+opCodeToFunc 0x6a = rorOp accumulatorArg  1 2
+opCodeToFunc 0x66 = rorOp zeroPageArg     2 5
+opCodeToFunc 0x76 = rorOp zeroPageXArg    2 6
+opCodeToFunc 0x6e = rorOp absoluteArgPtr  3 6
+opCodeToFunc 0x7e = rorOp absoluteXargPtr 3 7
 
-opCodeToFunc 0x0a = aslOp accumulatorArg 1
-opCodeToFunc 0x06 = aslOp zeroPageArg 2 
-opCodeToFunc 0x16 = aslOp zeroPageXArg 2 
-opCodeToFunc 0x0e = aslOp absoluteArgPtr 3
-opCodeToFunc 0x1e = aslOp absoluteXargPtr 3
+opCodeToFunc 0x0a = aslOp accumulatorArg  1 2
+opCodeToFunc 0x06 = aslOp zeroPageArg     2 5
+opCodeToFunc 0x16 = aslOp zeroPageXArg    2 6
+opCodeToFunc 0x0e = aslOp absoluteArgPtr  3 6
+opCodeToFunc 0x1e = aslOp absoluteXargPtr 3 7
 
-opCodeToFunc 0x4a = lsrOp accumulatorArg 1
-opCodeToFunc 0x46 = lsrOp zeroPageArg 2 
-opCodeToFunc 0x56 = lsrOp zeroPageXArg 2 
-opCodeToFunc 0x4e = lsrOp absoluteArgPtr 3
-opCodeToFunc 0x5e = lsrOp absoluteXargPtr 3
+opCodeToFunc 0x4a = lsrOp accumulatorArg  1 2
+opCodeToFunc 0x46 = lsrOp zeroPageArg     2 5
+opCodeToFunc 0x56 = lsrOp zeroPageXArg    2 6
+opCodeToFunc 0x4e = lsrOp absoluteArgPtr  3 6
+opCodeToFunc 0x5e = lsrOp absoluteXargPtr 3 7
 
 opCodeToFunc 0xa9 = ldOp Acc immediateArg 2 2
 opCodeToFunc 0xa5 = ldOp Acc zeroPageArg 2 3
@@ -682,6 +703,7 @@ opCodeToFunc 0x28 = pullOp Status 1 4
 
 opCodeToFunc 0x20 = jsrOp absoluteArg 3 6
 opCodeToFunc 0x60 = rtsOp 6
+opCodeToFunc 0x40 = rtiOp 6
 
 opCodeToFunc 0xc9 = cmpOp immediateArg    Acc 2 2
 opCodeToFunc 0xc5 = cmpOp zeroPageArg     Acc 2 3
@@ -742,13 +764,20 @@ isDeadAtExec cpu@(Cpu mem (Registers pc _ _ _ _ _) _) cn = isDead cpu && cn == 0
 isDead :: Cpu -> Bool
 isDead cpu@(Cpu mem (Registers pc _ _ _ _ _) _) = readMem(pc) mem == 0
 
+-- (trace (show (addr, code, temp, stackFF, stackFE, stackFD, stackFC, stackFB, stackFA)) opCode)
 stepCpu :: Cpu -> Cpu
-stepCpu cpu = (opCodeToFunc (trace (show (addr, code)) opCode)) cpu
+stepCpu cpu = (opCodeToFunc opCode) cpu
   where opCode = nextOpCode cpu
         addr = showHex (pc (registers cpu)) ""
         code = showHex opCode ""
         mem = memory cpu
-        temp = readMem 0x0180 mem
+        temp = showHex (readMem 0x0180 mem) ""
+        stackFF = showHex (readMem 0x17F mem) ""
+        stackFE = showHex (readMem 0x17E mem) ""
+        stackFD = showHex (readMem 0x17D mem) ""
+        stackFC = showHex (readMem 0x17C mem) ""
+        stackFB = showHex (readMem 0x17B mem) ""
+        stackFA = showHex (readMem 0x17A mem) ""
 
         
 nextOpCode :: Cpu -> Int
