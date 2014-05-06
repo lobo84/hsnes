@@ -235,10 +235,10 @@ accumulatorArg cpu = acc(regs)
         regs = registers cpu
 
 indirectXarg :: Cpu -> Int
-indirectXarg cpu = error "not implemented"
+indirectXarg cpu = error "inderectXarg is not implemented"
 
 indirectYarg :: Cpu -> Int
-indirectYarg cpu = error "not implemented"
+indirectYarg cpu = error "indirectYarg is not implemented"
 
 toAddress :: Int -> Int -> Int
 toAddress a b = (Data.Bits..|.) (Data.Bits.shiftL a 8) b
@@ -334,7 +334,8 @@ bitOp aluOp f size c cpu = Cpu mem newRegs newC
 shiftOp :: AccFuncOneArg -> BitPos -> AddressingMode -> OpSize -> Cyc -> Cpu -> Cpu
 shiftOp aluOp bitPos f size c cpu = Cpu mem newRegs newC
   where newRegs = regs {acc=newAcc, pc=newPc, status=newStatus}
-        newAcc = aluOp (f cpu)
+        newAcc = mod newAccVal 256
+        newAccVal = (aluOp (f cpu))
         newPc = pc(regs) + size
         newAccStatus = updateStatusFlagsNumericOp (status(regs)) newAcc        
         newStatus = updateFlag Carry carryFlag newAccStatus
@@ -373,10 +374,24 @@ lsrOp :: AddressingMode -> OpSize -> Cyc -> Cpu -> Cpu
 lsrOp = shiftOp ((flip shiftR) 1) 0
 
 rolOp :: AddressingMode -> OpSize -> Cyc -> Cpu -> Cpu
-rolOp = shiftOp ((flip rotateL) 1) 7
+rolOp f size cyc cpu = shiftOp ((flip rotateL8) (readFlag Carry (status(registers(cpu))))) 7 f size cyc cpu
+--rolOp f size cyc cpu = (shiftOp (rotateL8)) 7 f size cyc cpu
 
 rorOp :: AddressingMode -> OpSize -> Cyc -> Cpu -> Cpu
-rorOp = shiftOp ((flip rotateR) 1) 0
+rorOp f size cyc cpu = shiftOp ((flip rotateR8) (readFlag Carry (status(registers(cpu))))) 0 f size cyc cpu
+--rorOp = shiftOp ((flip rotateR8) True) 0
+
+rotateR8 :: Int -> Bool -> Int
+rotateR8 value oldCarry = newValue
+  where newValShift = mod (shiftR value 1) 256
+        copyBitFunc = if oldCarry then setBit else clearBit
+        newValue = (copyBitFunc) newValShift 7
+
+rotateL8 :: Int -> Bool -> Int
+rotateL8 value oldCarry = newValue
+  where newValShift = mod (shiftL value 1) 256
+        copyBitFunc = if oldCarry then setBit else clearBit
+        newValue = (copyBitFunc) newValShift 0
 
 pushOp :: RegisterType -> OpSize -> Cyc -> Cpu -> Cpu
 pushOp regType size c cpu = push pushValue newC (Cpu mem newRegs newC)

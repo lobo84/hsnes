@@ -32,7 +32,7 @@ runCpuRom rom = str
   where intRom = map (\v -> fromIntegral(v)::Int) (L.unpack(R.prgData rom))
         mem = zip [0xc000..] intRom
         startcpu = (C.initCpu 0xC000 [] mem)
-        str = snd (runCpuCyclesState 1000 (startcpu,[]))
+        str = snd (runCpuCyclesState 2000 (startcpu,[]))
         
 runCpuCyclesState :: Int -> (Cpu,[String]) -> (Cpu,[String])
 runCpuCyclesState 0 (cpu,ss) = (cpu,ss)
