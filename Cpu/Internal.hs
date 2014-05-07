@@ -8,7 +8,7 @@ module Cpu.Internal(
     runCpu,
     runCpuInteractive,
     immediateArg,
-    absoluteArg,
+    absoluteArgAddr,
     absoluteArgPtr,    
     status,
     acc,
@@ -183,12 +183,12 @@ immediateArg = fstArg
 absoluteArgPtr :: Cpu -> Int
 absoluteArgPtr cpu = readMem address mem
   where mem = memory cpu
-        address = (absoluteArg cpu)
+        address = (absoluteArgAddr cpu)
         --regs = registers cpu
         --temp = readMem 0x0180 mem
         
-absoluteArg :: Cpu -> Int
-absoluteArg cpu = args16Address cpu
+absoluteArgAddr :: Cpu -> Int
+absoluteArgAddr cpu = args16Address cpu
 --  where mem = memory cpu
 --        regs = registers cpu
         
@@ -261,10 +261,18 @@ indirectXarg cpu = readMem newAddr mem
 -- return (readmem toAddress low high)
 
 indirectYargAddr :: Cpu -> Int
-indirectYargAddr cpu = error "indirectYarg is not implemented"
+indirectYargAddr cpu = newAddr
+  where mem = memory cpu
+        regs = registers cpu
+        newAddr = add16 indirectAddr (y regs)
+        low = readMem (fstArg cpu) mem
+        high = readMem (mod ((fstArg cpu) + 1) 256) mem
+        indirectAddr = toAddress high low
 
 indirectYarg :: Cpu -> Int
-indirectYarg cpu = error "indirectYarg is not implemented"
+indirectYarg cpu = readMem newAddr mem
+  where mem = memory cpu
+        newAddr = indirectYargAddr cpu
 
 toAddress :: Int -> Int -> Int
 toAddress a b = (Data.Bits..|.) (Data.Bits.shiftL a 8) b
@@ -704,7 +712,7 @@ opCodeToFunc 0x31 = andOp indirectYarg    2 5 -- +1
 opCodeToFunc 0x49 = eorOp immediateArg 2 2
 opCodeToFunc 0x45 = eorOp zeroPageArg 2 3
 opCodeToFunc 0x55 = eorOp zeroPageXArg 2 4
-opCodeToFunc 0x4f = eorOp absoluteArgPtr 3 4 
+opCodeToFunc 0x4d = eorOp absoluteArgPtr 3 4 
 opCodeToFunc 0x5d = eorOp absoluteXargPtr 3 4 -- +1
 opCodeToFunc 0x59 = eorOp absoluteYargPtr 3 4 -- +1
 opCodeToFunc 0x41 = eorOp indirectXarg    2 6
@@ -723,38 +731,38 @@ opCodeToFunc 0x2a = rolOp accumulatorArg  1 2
 
 opCodeToFunc 0x26 = rolToMemOp zeroPageArgAddr 2 5
 opCodeToFunc 0x36 = rolToMemOp zeroPageXArg    2 6
-opCodeToFunc 0x2e = rolToMemOp absoluteArgPtr  3 6
+opCodeToFunc 0x2e = rolToMemOp absoluteArgAddr 3 6
 opCodeToFunc 0x3e = rolToMemOp absoluteXargPtr 3 7
 
 opCodeToFunc 0x6a = rorOp accumulatorArg  1 2
 
 opCodeToFunc 0x66 = rorToMemOp zeroPageArgAddr 2 5
 opCodeToFunc 0x76 = rorToMemOp zeroPageXArg    2 6
-opCodeToFunc 0x6e = rorToMemOp absoluteArgPtr  3 6
+opCodeToFunc 0x6e = rorToMemOp absoluteArgAddr 3 6
 opCodeToFunc 0x7e = rorToMemOp absoluteXargPtr 3 7
 
 opCodeToFunc 0x0a = aslOp accumulatorArg  1 2
 
 opCodeToFunc 0x06 = aslToMemOp zeroPageArgAddr 2 5
 opCodeToFunc 0x16 = aslToMemOp zeroPageXArg    2 6
-opCodeToFunc 0x0e = aslToMemOp absoluteArgPtr  3 6
+opCodeToFunc 0x0e = aslToMemOp absoluteArgAddr 3 6
 opCodeToFunc 0x1e = aslToMemOp absoluteXargPtr 3 7
 
 opCodeToFunc 0x4a = lsrOp accumulatorArg       1 2
 
 opCodeToFunc 0x46 = lsrToMemOp zeroPageArgAddr 2 5
 opCodeToFunc 0x56 = lsrToMemOp zeroPageXArg    2 6
-opCodeToFunc 0x4e = lsrToMemOp absoluteArgPtr  3 6
+opCodeToFunc 0x4e = lsrToMemOp absoluteArgAddr 3 6
 opCodeToFunc 0x5e = lsrToMemOp absoluteXargPtr 3 7
 
-opCodeToFunc 0xa9 = ldOp Acc immediateArg 2 2
-opCodeToFunc 0xa5 = ldOp Acc zeroPageArg 2 3
-opCodeToFunc 0xb5 = ldOp Acc zeroPageXArg 2 4
-opCodeToFunc 0xad = ldOp Acc absoluteArgPtr 3 4
-opCodeToFunc 0xbd = ldOp Acc absoluteXargPtr 3 4
-opCodeToFunc 0xb9 = ldOp Acc absoluteYargPtr 3 4
-opCodeToFunc 0xa1 = ldOp Acc indirectXarg 2 6 
-opCodeToFunc 0xb1 = ldOp Acc indirectYarg 2 5
+opCodeToFunc 0xa9 = ldOp Acc immediateArg     2 2
+opCodeToFunc 0xa5 = ldOp Acc zeroPageArg      2 3
+opCodeToFunc 0xb5 = ldOp Acc zeroPageXArg     2 4
+opCodeToFunc 0xad = ldOp Acc absoluteArgPtr   3 4
+opCodeToFunc 0xbd = ldOp Acc absoluteXargPtr  3 4 -- +1
+opCodeToFunc 0xb9 = ldOp Acc absoluteYargPtr  3 4 -- +1
+opCodeToFunc 0xa1 = ldOp Acc indirectXarg     2 6 
+opCodeToFunc 0xb1 = ldOp Acc indirectYarg     2 5 -- +1
 
 opCodeToFunc 0xa2 = ldOp X immediateArg    2 2
 opCodeToFunc 0xa6 = ldOp X zeroPageArg     2 3
@@ -770,19 +778,19 @@ opCodeToFunc 0xbc = ldOp Y absoluteYargPtr 3 4
 
 opCodeToFunc 0x85 = stOp Acc zeroPageArgAddr 2 3
 opCodeToFunc 0x95 = stOp Acc zeroPageXArg 2 4
-opCodeToFunc 0x8d = stOp Acc absoluteArg 3 4
+opCodeToFunc 0x8d = stOp Acc absoluteArgAddr 3 4
 opCodeToFunc 0x9d = stOp Acc absoluteXargPtr 3 5
 opCodeToFunc 0x99 = stOp Acc absoluteYargPtr 3 5
 opCodeToFunc 0x81 = stOp Acc indirectXargAddr 2 6
 opCodeToFunc 0x91 = stOp Acc indirectYargAddr 2 6
 
-opCodeToFunc 0x86 = stOp X zeroPageArgAddr 2 3
-opCodeToFunc 0x96 = stOp X zeroPageYArg 2 4
-opCodeToFunc 0x8e = stOp X absoluteArg 3 4
+opCodeToFunc 0x86 = stOp X zeroPageArgAddr  2 3
+opCodeToFunc 0x96 = stOp X zeroPageYArg     2 4
+opCodeToFunc 0x8e = stOp X absoluteArgAddr  3 4
 
-opCodeToFunc 0x84 = stOp Y zeroPageArgAddr 2 3 
-opCodeToFunc 0x94 = stOp Y zeroPageYArg 2 4
-opCodeToFunc 0x8c = stOp Y absoluteArg 3 4
+opCodeToFunc 0x84 = stOp Y zeroPageArgAddr  2 3 
+opCodeToFunc 0x94 = stOp Y zeroPageYArg     2 4
+opCodeToFunc 0x8c = stOp Y absoluteArgAddr  3 4
 
 opCodeToFunc 0xaa = transferOp Acc X 1 2
 opCodeToFunc 0xa8 = transferOp Acc Y 1 2
@@ -797,7 +805,7 @@ opCodeToFunc 0x08 = pushOp Status 1 3
 opCodeToFunc 0x68 = pullOp Acc 1 4
 opCodeToFunc 0x28 = pullOp Status 1 4
 
-opCodeToFunc 0x20 = jsrOp absoluteArg 3 6
+opCodeToFunc 0x20 = jsrOp absoluteArgAddr 3 6
 opCodeToFunc 0x60 = rtsOp 6
 opCodeToFunc 0x40 = rtiOp 6
 
@@ -820,12 +828,12 @@ opCodeToFunc 0xcc = cmpOp absoluteArgPtr Y 3 4
 
 opCodeToFunc 0xe6 = incMemOp zeroPageArgAddr 1 2 5
 opCodeToFunc 0xf6 = incMemOp zeroPageXArg    1 2 6
-opCodeToFunc 0xee = incMemOp absoluteArg     1 3 6
+opCodeToFunc 0xee = incMemOp absoluteArgAddr 1 3 6
 opCodeToFunc 0xfe = incMemOp absoluteXargPtr 1 3 7
 
 opCodeToFunc 0xc6 = incMemOp zeroPageArgAddr (-1) 2 5
 opCodeToFunc 0xd6 = incMemOp zeroPageXArg    (-1) 2 6
-opCodeToFunc 0xce = incMemOp absoluteArg     (-1) 3 6
+opCodeToFunc 0xce = incMemOp absoluteArgAddr (-1) 3 6
 opCodeToFunc 0xde = incMemOp absoluteXargPtr (-1) 3 7
 
 opCodeToFunc 0xe8 = incOp X   1  1 2
@@ -842,10 +850,10 @@ opCodeToFunc 0x30 = branchOp relativeArg isPositiveState 2
 opCodeToFunc 0x70 = branchOp relativeArg isOverflowState 2
 opCodeToFunc 0x50 = branchOp relativeArg (not . isOverflowState) 2
 
-opCodeToFunc 0x4c = jmpOp absoluteArg 3 3
+opCodeToFunc 0x4c = jmpOp absoluteArgAddr 3 3
 
-opCodeToFunc 0x24 = bitTstOp zeroPageArgAddr 2 3
-opCodeToFunc 0x2c = bitTstOp absoluteArg 2 4
+opCodeToFunc 0x24 = bitTstOp zeroPageArgAddr  2 3
+opCodeToFunc 0x2c = bitTstOp absoluteArgAddr  3 4
 
 opCodeToFunc 0xea = nop 1
 
@@ -880,7 +888,7 @@ stepCpu cpu = (opCodeToFunc (trace (show (addr, code, temp)) opCode)) cpu
         addr = showHex (pc (registers cpu)) ""
         code = showHex opCode ""
         mem = memory cpu
-        temp = showHex (readMem 0x0078 mem) ""
+        temp = showHex (readMem 0x0033 mem) ""
         stackFF = showHex (readMem 0x0080 mem) ""
         stackFE = showHex (readMem 0x0081 mem) ""
         stackFD = showHex (readMem 0x0001 mem) ""
