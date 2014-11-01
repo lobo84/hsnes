@@ -870,7 +870,7 @@ opCodeToFunc 0x96 = stOp X zeroPageYArgAddr    2 4
 opCodeToFunc 0x8e = stOp X absoluteAddr    3 4
 
 opCodeToFunc 0x84 = stOp Y zeroPageArgAddr  2 3
-opCodeToFunc 0x94 = stOp Y zeroPageYArgAddr 2 4
+opCodeToFunc 0x94 = stOp Y zeroPageXArgAddr 2 4
 opCodeToFunc 0x8c = stOp Y absoluteAddr     3 4
 
 opCodeToFunc 0xaa = transferOp Acc X 1 2
