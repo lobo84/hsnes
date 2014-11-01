@@ -1,0 +1,73 @@
+03 SLO (d,x)
+07 SLO d
+0f SLO a
+13 SLO (d),y
+17 SLO d,x
+1b SLO a,y
+1f SLO a,x
+
+23 RLA (d,x)
+27 RLA d
+2f RLA a
+33 RLA (d),y
+37 RLA d,x
+3b RLA a,y
+3f RLA a,x
+
+43 SRE (d,x)
+47 SRE d
+4f SRE a
+53 SRE (d),y
+57 SRE d,x
+5b SRE a,y
+5f SRE a,x
+
+63 RRA (d,x)
+67 RRA d
+6b RRA a
+73 RRA (d),y
+77 RRA d,x
+7b RRA a,y
+7f RRA a,x
+
+c3 DCP (d,x)
+c7 DCP d
+cf DCP a
+d3 DCP (d),y
+d7 DCP d,x
+db DCP a,y
+df DCP a,x
+
+e3 ISC (d,x)
+e7 ISC d
+ef ISC a
+f3 ISC (d),y
+f7 ISC d,x
+fb ISC a,y
+ff ISC a,x
+
+83 SAX (d,x)
+87 SAX d
+8f SAX a
+97 SAX d,y
+
+
+0b ANC #i
+2b ANC #i
+
+93 AHX (d),y
+9f AHX a,y
+
+4b ALR #i
+
+6b ARR #i
+
+cb AXS #i
+
+8b XAA #i
+
+9b TAS a,y
+
+bb LAS a,y
+
+eb SBC #i
