@@ -237,7 +237,7 @@ absoluteYAddr :: AddressingCalc
 absoluteYAddr = absoluteRegAddr y
 
 absoluteRegAddr :: (Registers -> RegValue) -> AddressingCalc
-absoluteRegAddr reg cpu = (addr, pageCross)
+absoluteRegAddr reg cpu = ((traceHex "addr" addr), pageCross)
   where regs = registers cpu
         offs = reg regs
         addr = add16 offs base
@@ -399,9 +399,10 @@ sbcOp f size c cpu = Cpu mem newRegs newC
         regs = registers cpu
         newC = (cyc cpu) + c
 
-ldOp ::  RegisterType -> AddressingCalc -> OpSize -> Cyc -> Int -> Cpu -> Cpu
-ldOp rType ac size c penalty cpu = Cpu mem newRegs newC
-  where newRegs = updateRegisters [(rType,newR), (Pc,newPc), (Status,newStatus)] regs
+ldOp ::  [RegisterType] -> AddressingCalc -> OpSize -> Cyc -> Int -> Cpu -> Cpu
+ldOp rTypes ac size c penalty cpu = Cpu mem newRegs newC
+  where newRegs = updateRegisters (newValueRegs ++ [(Pc,newPc), (Status,newStatus)]) regs
+        newValueRegs = map (\t -> (t,newR)) rTypes
         (ea, cross) = ac cpu
         newR = readMem ea mem
         newPc = pc regs + size
@@ -479,6 +480,30 @@ transferOp from to size c cpu = Cpu mem newRegs newC
         mem = memory cpu
         regs = registers cpu
         newC = (cyc cpu) + c
+
+
+
+
+
+saxOp :: AddressingCalc -> OpSize -> Cyc -> Cpu -> Cpu
+saxOp ac size c cpu = Cpu mem regs' cycs'
+  where and' = (Data.Bits..&.)
+        mem   = memory cpu
+        regs  = registers cpu
+        op1 = ((acc regs) `and'` (x regs))
+        op2 = fstArg cpu
+        rx' = sub8 op1 op2
+        fc' = subWillCarry op1 op2 False
+        rp' = updateFlags [(Carry, fc')] (status regs)
+        regs' = updateRegisters [(Status, rp')] regs
+        (_, cross) = ac cpu
+        cycs' = (cyc cpu) + c + (if cross then 1 else 0)
+
+
+
+
+
+
 
 andOp :: AddressingMode -> OpSize -> Cyc -> Cpu -> Cpu
 andOp = bitOp (Data.Bits..&.)
@@ -730,12 +755,13 @@ jmpOp ac size c cpu = Cpu mem newRegs newC
        regs = registers cpu
        newC = (cyc cpu) + c
 
-nop :: OpSize -> Cpu -> Cpu
-nop size cpu = cpu{memory=mem,registers=newRegs, cyc=newC}
+nop :: AddressingCalc -> OpSize -> Cyc -> Cpu -> Cpu
+nop ac size c cpu = cpu{memory=mem,registers=newRegs, cyc=newC}
   where newRegs = updateRegister Pc (pc(regs)+size) regs
         mem = memory cpu
+        (_, cross) = ac cpu
         regs = registers cpu
-        newC = (cyc cpu)+2
+        newC = (cyc cpu) + c + (if cross then 1 else 0)
 
 bitTstOp :: AddressingCalc -> OpSize -> Cyc -> Cpu -> Cpu
 bitTstOp ac size c cpu = Cpu mem newRegs newC
@@ -836,32 +862,40 @@ opCodeToFunc 0x56 = lsrToMemOp zeroPageXArgAddr    2 6
 opCodeToFunc 0x4e = lsrToMemOp absoluteAddr    3 6
 opCodeToFunc 0x5e = lsrToMemOp absoluteXAddr       3 7
 
-opCodeToFunc 0xa9 = ldOp Acc immediateArgAddr 2 2 0
-opCodeToFunc 0xa5 = ldOp Acc zeroPageArgAddr  2 3 0
-opCodeToFunc 0xb5 = ldOp Acc zeroPageXArgAddr 2 4 0
-opCodeToFunc 0xad = ldOp Acc absoluteAddr     3 4 0
-opCodeToFunc 0xbd = ldOp Acc absoluteXAddr    3 4 1 -- +1
-opCodeToFunc 0xb9 = ldOp Acc absoluteYAddr    3 4 1 -- +1
-opCodeToFunc 0xa1 = ldOp Acc indirectXargAddr 2 6 0
-opCodeToFunc 0xb1 = ldOp Acc indirectYargAddr 2 5 1 -- +1
+opCodeToFunc 0xa9 = ldOp [Acc] immediateArgAddr 2 2 0
+opCodeToFunc 0xa5 = ldOp [Acc] zeroPageArgAddr  2 3 0
+opCodeToFunc 0xb5 = ldOp [Acc] zeroPageXArgAddr 2 4 0
+opCodeToFunc 0xad = ldOp [Acc] absoluteAddr     3 4 0
+opCodeToFunc 0xbd = ldOp [Acc] absoluteXAddr    3 4 1 -- +1
+opCodeToFunc 0xb9 = ldOp [Acc] absoluteYAddr    3 4 1 -- +1
+opCodeToFunc 0xa1 = ldOp [Acc] indirectXargAddr 2 6 0
+opCodeToFunc 0xb1 = ldOp [Acc] indirectYargAddr 2 5 1 -- +1
 
-opCodeToFunc 0xa2 = ldOp X immediateArgAddr 2 2 0
-opCodeToFunc 0xa6 = ldOp X zeroPageArgAddr  2 3 0
-opCodeToFunc 0xb6 = ldOp X zeroPageYArgAddr 2 4 0
-opCodeToFunc 0xae = ldOp X absoluteAddr     3 4 0
-opCodeToFunc 0xbe = ldOp X absoluteYAddr    3 4 1 -- +1
+opCodeToFunc 0xa3 = ldOp [Acc, X] indirectXargAddr 2 6 0
+opCodeToFunc 0xa7 = ldOp [Acc, X] zeroPageArgAddr  2 3 0
+opCodeToFunc 0xab = ldOp [Acc, X] immediateArgAddr 2 2 0
+opCodeToFunc 0xaf = ldOp [Acc, X] absoluteAddr     3 4 0
+opCodeToFunc 0xb3 = ldOp [Acc, X] indirectYargAddr 2 5 1 -- +1
+opCodeToFunc 0xb7 = ldOp [Acc, X] zeroPageYArgAddr 2 4 0
+opCodeToFunc 0xbf = ldOp [Acc, X] absoluteYAddr    3 4 1
 
-opCodeToFunc 0xa0 = ldOp Y immediateArgAddr 2 2 0
-opCodeToFunc 0xa4 = ldOp Y zeroPageArgAddr  2 3 0
-opCodeToFunc 0xb4 = ldOp Y zeroPageXArgAddr 2 4 0
-opCodeToFunc 0xac = ldOp Y absoluteAddr     3 4 0
-opCodeToFunc 0xbc = ldOp Y absoluteYAddr    3 4 0
+opCodeToFunc 0xa2 = ldOp [X] immediateArgAddr 2 2 0
+opCodeToFunc 0xa6 = ldOp [X] zeroPageArgAddr  2 3 0
+opCodeToFunc 0xb6 = ldOp [X] zeroPageYArgAddr 2 4 0
+opCodeToFunc 0xae = ldOp [X] absoluteAddr     3 4 0
+opCodeToFunc 0xbe = ldOp [X] absoluteYAddr    3 4 1 -- +1
+
+opCodeToFunc 0xa0 = ldOp [Y] immediateArgAddr 2 2 0
+opCodeToFunc 0xa4 = ldOp [Y] zeroPageArgAddr  2 3 0
+opCodeToFunc 0xb4 = ldOp [Y] zeroPageXArgAddr 2 4 0
+opCodeToFunc 0xac = ldOp [Y] absoluteAddr     3 4 0
+opCodeToFunc 0xbc = ldOp [Y] absoluteXAddr    3 4 1
 
 opCodeToFunc 0x85 = stOp Acc zeroPageArgAddr  2 3
-opCodeToFunc 0x95 = stOp Acc zeroPageXArgAddr     2 4
+opCodeToFunc 0x95 = stOp Acc zeroPageXArgAddr 2 4
 opCodeToFunc 0x8d = stOp Acc absoluteAddr     3 4
-opCodeToFunc 0x9d = stOp Acc absoluteXAddr        3 5
-opCodeToFunc 0x99 = stOp Acc absoluteYAddr        3 5
+opCodeToFunc 0x9d = stOp Acc absoluteXAddr    3 5
+opCodeToFunc 0x99 = stOp Acc absoluteYAddr    3 5
 opCodeToFunc 0x81 = stOp Acc indirectXargAddr 2 6
 opCodeToFunc 0x91 = stOp Acc indirectYargAddr 2 6
 
@@ -872,6 +906,11 @@ opCodeToFunc 0x8e = stOp X absoluteAddr    3 4
 opCodeToFunc 0x84 = stOp Y zeroPageArgAddr  2 3
 opCodeToFunc 0x94 = stOp Y zeroPageXArgAddr 2 4
 opCodeToFunc 0x8c = stOp Y absoluteAddr     3 4
+
+opCodeToFunc 0x83 = saxOp indirectXargAddr 2 5
+opCodeToFunc 0x87 = saxOp zeroPageArgAddr  2 3
+opCodeToFunc 0x8f = saxOp absoluteAddr     3 4
+opCodeToFunc 0x97 = saxOp absoluteYAddr    3 5
 
 opCodeToFunc 0xaa = transferOp Acc X 1 2
 opCodeToFunc 0xa8 = transferOp Acc Y 1 2
@@ -937,7 +976,39 @@ opCodeToFunc 0x6c = jmpOp indirectAddr 3 5
 opCodeToFunc 0x24 = bitTstOp zeroPageArgAddr  2 3
 opCodeToFunc 0x2c = bitTstOp absoluteAddr  3 4
 
-opCodeToFunc 0xea = nop 1
+opCodeToFunc 0x1a = nop_implied
+opCodeToFunc 0x3a = nop_implied
+opCodeToFunc 0x5a = nop_implied
+opCodeToFunc 0x7a = nop_implied
+opCodeToFunc 0xda = nop_implied
+opCodeToFunc 0xea = nop_implied
+opCodeToFunc 0xfa = nop_implied
+
+opCodeToFunc 0x80 = nop_immediate
+opCodeToFunc 0x82 = nop_immediate
+opCodeToFunc 0x89 = nop_immediate
+opCodeToFunc 0xc2 = nop_immediate
+opCodeToFunc 0xe2 = nop_immediate
+
+opCodeToFunc 0x04 = nop_zeropage
+opCodeToFunc 0x44 = nop_zeropage
+opCodeToFunc 0x64 = nop_zeropage
+
+opCodeToFunc 0x0c = nop_absolute
+
+opCodeToFunc 0x14 = nop_zeropage_x
+opCodeToFunc 0x34 = nop_zeropage_x
+opCodeToFunc 0x54 = nop_zeropage_x
+opCodeToFunc 0x74 = nop_zeropage_x
+opCodeToFunc 0xd4 = nop_zeropage_x
+opCodeToFunc 0xf4 = nop_zeropage_x
+
+opCodeToFunc 0x1c = nop_absolute_x
+opCodeToFunc 0x3c = nop_absolute_x
+opCodeToFunc 0x5c = nop_absolute_x
+opCodeToFunc 0x7c = nop_absolute_x
+opCodeToFunc 0xdc = nop_absolute_x
+opCodeToFunc 0xfc = nop_absolute_x
 
 opCodeToFunc 0xe9 = sbcOp immediateArg  2 2
 opCodeToFunc 0xe5 = sbcOp zeroPageArg   2 3
@@ -950,6 +1021,13 @@ opCodeToFunc 0xf1 = sbcOp indirectYarg  2 5 -- +1
 
 
 opCodeToFunc opCode = error ("op code " ++ (showHex(opCode) "") ++ " Not implemented")
+
+nop_implied    = nop immediateArgAddr 1 2
+nop_immediate  = nop immediateArgAddr 2 2
+nop_zeropage   = nop zeroPageArgAddr  2 3
+nop_absolute   = nop absoluteAddr     3 4
+nop_zeropage_x = nop zeroPageXArgAddr 2 4
+nop_absolute_x = nop absoluteXAddr    3 4
 
 runCpu :: Cpu -> Cpu
 runCpu cpu
@@ -965,17 +1043,19 @@ isDead cpu@(Cpu mem (Registers pc _ _ _ _ _) _) = readMem(pc) mem == 0
 
 -- (trace (show (addr, code, temp, stackFF, stackFE, stackFD, stackFC, stackFB, stackFA)) opCode)
 stepCpu :: Cpu -> Cpu
-stepCpu cpu = (opCodeToFunc (trace (show (addr, code, arg1, arg2, regs, p)) opCode)) cpu
+stepCpu cpu = (opCodeToFunc (trace (show (addr, code, arg1, arg2, tr1, tr2)) opCode)) cpu
   where opCode = nextOpCode cpu
         addr = showHex (pc (registers cpu)) ""
         code = showHex opCode ""
-        arg1 =  "arg1: " ++ showHex (fstArg cpu) ""
-        arg2 =  "arg2: " ++ showHex (secArg cpu) ""
+        arg1 = "arg1: " ++ showHex (fstArg cpu) ""
+        arg2 = "arg2: " ++ showHex (secArg cpu) ""
+        ptr = 0x5FF + (x rs)
+        tr1  = "ptr: " ++ showHex ptr ""
+        tr2  = "*ptr: " ++ showHex (readMem ptr mem) ""
         rs = registers cpu
         regs = "regs: [" ++ (showHex (acc rs) "") ++ "]"
         mem = memory cpu
         p = showStatus (status rs)
-
 
 nextOpCode :: Cpu -> Int
 nextOpCode cpu = readMem (pc(regs)) mem
