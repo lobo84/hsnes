@@ -24,7 +24,7 @@
 
 63 RRA (d,x)
 67 RRA d
-6b RRA a
+6f RRA a
 73 RRA (d),y
 77 RRA d,x
 7b RRA a,y
