@@ -1,3 +1,4 @@
+
 import qualified Data.ByteString.Lazy as L
 
 import Rom as R
@@ -6,45 +7,93 @@ import Numeric
 import Text.Printf
 import Data.Char
 import System.IO
-import Data.List
+import Data.List (find)
+import qualified Data.Stream as S
+import Data.Stream ((<:>))
+import Control.Applicative
+import Options
+
+
+data Mode = Run
+          | CompareLog
+    deriving (Bounded, Enum, Show)
+
+data MainOptions = MainOptions
+    { optMode  :: Mode
+    , optRom   :: String
+    , optLog   :: String
+    , optDebug :: Bool
+    }
+
+enumOption name def desc = defineOption (optionType_enum name) (\o -> o
+            { optionLongFlags = [name], optionDefault = def, optionDescription = desc })
+
+instance Options MainOptions where
+    defineOptions = pure MainOptions
+        <*> enumOption "mode" Run
+            "Run: run rom, CompareLog: run rom and compare each step against log file"
+        <*> simpleOption "rom" "nestest.nes"
+            "Path to nes rom"
+        <*> simpleOption "log" "nestest.log"
+            "Path to log in nestest format"
+        <*> simpleOption "debug" False
+            "Enable debug trace"
+
 
 main :: IO ()
-main = do
-  log <- readFile "nestest.log"
-  bytes <- L.readFile "nestest.nes"
+main = runCommand $ \opts args -> do
+
+  case optMode opts of
+    Run        -> runIndefinite opts
+    CompareLog -> runCompareLog opts
+
+
+
+runCompareLog :: MainOptions -> IO ()
+runCompareLog opts = do
+  log   <- readFile   (optLog opts)
+  bytes <- L.readFile (optRom opts)
   case R.parse(bytes) of
     Left errMsg -> putStr ("Parse failed:\n" ++ errMsg)
-    Right rom -> putStr ((compareLogs actualLog nesLog) ++ "\n")
-      where actualLog = reverse (runCpuRom rom)
-            nesLog = (lines log)
-      --putStr ("Parse success:\n" ++ (romInfo rom))
+    Right rom -> putStr ((compareLogs actualLog nesLog))
+      where actualLog = (runCpuRom opts rom)
+            nesLog = S.fromList (lines log)
+
+runIndefinite :: MainOptions -> IO ()
+runIndefinite opts = do
+  log   <- readFile   (optLog opts)
+  bytes <- L.readFile (optRom opts)
+  case R.parse(bytes) of
+    Left errMsg -> putStr ("Parse failed:\n" ++ errMsg)
+    Right rom -> mapM_ putStrLn (S.toList (runCpuRom opts rom))
+
+
 
 trim :: String -> String
 trim = f . f
    where f = reverse . dropWhile (\x -> isSpace x || x == '\n')
 
+compareLogs :: S.Stream String -> S.Stream String -> String
 compareLogs actual expected = pretty foundResult
-  where foundResult = find (\(line,(a,e)) -> not (a == e)) linePairs
-        linePairs = zip [1..] (zip actual expected)
-        pretty (Just (line, diffPair)) = (show line) ++ "\n" ++ prettyDiff diffPair
-        pretty Nothing               = "No diff"
+  where foundResult = sFind (\(line,(a,e)) -> not (a == e)) linePairs
+        linePairs = S.zip lineNumbers (S.zip actual expected)
+        lineNumbers = S.fromList [1..]
+        pretty (line, diffPair) = (show line) ++ "\n" ++ prettyDiff diffPair
+
+sFind :: Eq a => (a -> Bool) -> S.Stream a -> a
+sFind p s = S.head (S.filter p s)
 
 prettyDiff :: (String, String) -> String
 prettyDiff (l1, l2) = unlines (map show pairs)
   where pairs = (words l1) `zip` (words l2)
 
-runCpuRom :: Rom -> [String]
-runCpuRom rom = str
+runCpuRom :: MainOptions -> Rom -> S.Stream String
+runCpuRom opts rom = msgStream
   where intRom = map (\v -> fromIntegral(v)::Int) (L.unpack(R.prgData rom))
         mem = zip [0xc000..] intRom
-        startcpu = (C.initCpu 0xC000 [] mem)
-        str = snd (runCpuCyclesState 9000 (startcpu,[]))
-
-runCpuCyclesState :: Int -> (Cpu,[String]) -> (Cpu,[String])
-runCpuCyclesState 0 (cpu,ss) = (cpu,ss)
-runCpuCyclesState c (cpu,ss) = runCpuCyclesState (c-1) (nextCpu,stateStr)
-  where nextCpu = C.stepCpu cpu
-        stateStr = (toStateStr cpu):ss
+        startcpu = (C.initCpu 0xC000 [] mem (optDebug opts))
+        cpuStream = S.iterate C.stepCpu startcpu
+        msgStream = S.map toStateStr cpuStream
 
 
 toStateStr :: Cpu -> String
