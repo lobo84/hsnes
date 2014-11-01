@@ -237,10 +237,10 @@ absoluteYAddr :: AddressingCalc
 absoluteYAddr = absoluteRegAddr y
 
 absoluteRegAddr :: (Registers -> RegValue) -> AddressingCalc
-absoluteRegAddr reg cpu = ((traceHex "addr" addr), pageCross)
+absoluteRegAddr reg cpu = (addr, pageCross)
   where regs = registers cpu
         offs = reg regs
-        addr = add16 (traceHex "offs" offs) (traceHex "base" base)
+        addr = add16 offs base
         base = args16Address cpu
         pageCross = pageIsCrossed base addr
 
@@ -288,7 +288,7 @@ accumulatorArg cpu = acc(regs)
         regs = registers cpu
 
 indirectAddr :: AddressingCalc
-indirectAddr cpu = ((traceHex "addr2" addr2), False)
+indirectAddr cpu = (addr2, False)
   where mem = memory cpu
         page = secArg cpu
         offs = fstArg cpu
@@ -420,7 +420,7 @@ stOp rType ac size c cpu = Cpu newMem newRegs newC
         newPc = pc(regs) + size
         (memAddress, _) = ac cpu
         value = readRegister rType regs
-        newMem = writeMem (traceHex ("addr(" ++ (showHex value "")) memAddress) value mem
+        newMem = writeMem memAddress value mem
         mem = memory cpu
         regs = registers cpu
         newC = (cyc cpu) + c
@@ -965,16 +965,16 @@ isDead cpu@(Cpu mem (Registers pc _ _ _ _ _) _) = readMem(pc) mem == 0
 
 -- (trace (show (addr, code, temp, stackFF, stackFE, stackFD, stackFC, stackFB, stackFA)) opCode)
 stepCpu :: Cpu -> Cpu
-stepCpu cpu = (opCodeToFunc (trace (show (addr, code, arg1, arg2, regs, p)) opCode)) cpu
+stepCpu cpu = (opCodeToFunc opCode) cpu
   where opCode = nextOpCode cpu
-        addr = showHex (pc (registers cpu)) ""
-        code = showHex opCode ""
-        arg1 =  "arg1: " ++ showHex (fstArg cpu) ""
-        arg2 =  "arg2: " ++ showHex (secArg cpu) ""
-        rs = registers cpu
-        regs = "regs: [" ++ (showHex (acc rs) "") ++ "]"
-        mem = memory cpu
-        p = showStatus (status rs)
+        --addr = showHex (pc (registers cpu)) ""
+        --code = showHex opCode ""
+        --arg1 =  "arg1: " ++ showHex (fstArg cpu) ""
+        --arg2 =  "arg2: " ++ showHex (secArg cpu) ""
+        --rs = registers cpu
+        --regs = "regs: [" ++ (showHex (acc rs) "") ++ "]"
+        --mem = memory cpu
+        --p = showStatus (status rs)
 
 
 nextOpCode :: Cpu -> Int
