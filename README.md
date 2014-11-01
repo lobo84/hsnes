@@ -3,6 +3,25 @@ hsnes
 
 A Nintendo Entertainment System emulator written in functionally pure Haskell.
 
+Prerequisites
+---
+* GHC - for compiling the source
+* SDL - for the current PPU code (not needed to run against nestest.nes)
+
+Building
+--------
+```
+$ ghc Main.hs
+```
+
+Execution
+---------
+```
+$ ./Main
+```
+This will load and execute nestest.nes and compare log output with nestest.log.
+
+
 Milestones
 ----------
 
