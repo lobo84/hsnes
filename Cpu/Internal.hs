@@ -965,16 +965,16 @@ isDead cpu@(Cpu mem (Registers pc _ _ _ _ _) _) = readMem(pc) mem == 0
 
 -- (trace (show (addr, code, temp, stackFF, stackFE, stackFD, stackFC, stackFB, stackFA)) opCode)
 stepCpu :: Cpu -> Cpu
-stepCpu cpu = (opCodeToFunc opCode) cpu
+stepCpu cpu = (opCodeToFunc (trace (show (addr, code, arg1, arg2, regs, p)) opCode)) cpu
   where opCode = nextOpCode cpu
-        --addr = showHex (pc (registers cpu)) ""
-        --code = showHex opCode ""
-        --arg1 =  "arg1: " ++ showHex (fstArg cpu) ""
-        --arg2 =  "arg2: " ++ showHex (secArg cpu) ""
-        --rs = registers cpu
-        --regs = "regs: [" ++ (showHex (acc rs) "") ++ "]"
-        --mem = memory cpu
-        --p = showStatus (status rs)
+        addr = showHex (pc (registers cpu)) ""
+        code = showHex opCode ""
+        arg1 =  "arg1: " ++ showHex (fstArg cpu) ""
+        arg2 =  "arg2: " ++ showHex (secArg cpu) ""
+        rs = registers cpu
+        regs = "regs: [" ++ (showHex (acc rs) "") ++ "]"
+        mem = memory cpu
+        p = showStatus (status rs)
 
 
 nextOpCode :: Cpu -> Int
