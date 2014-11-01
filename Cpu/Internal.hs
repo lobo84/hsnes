@@ -24,7 +24,7 @@ module Cpu.Internal(
     isDeadAtExec,
     cyc
 ) where
-import Debug.Trace
+import qualified Debug.Trace as T
 import Text.Printf
 import Data.Bits
 import Data.List
@@ -35,11 +35,11 @@ import Numeric(showHex)
 import Mem
 import Cpu.OpInfo
 
-data Cpu = Cpu {
-  memory :: Memory Int Int,
-  registers :: Registers,
-  cyc :: Int
-} deriving Show
+data Cpu = Cpu { memory :: Memory Int Int
+               , registers :: Registers
+               , cyc :: Int
+               , debug :: Bool
+               } deriving Show
 
 type RegValue = Int
 type Cyc = Int
@@ -389,7 +389,7 @@ adcOp :: AddressingCalc -> OpSize -> Cyc -> Int -> Cpu -> Cpu
 adcOp ac s c p cpu = (cpuProgress s c) (adcBase ac p cpu)
 
 adcBase :: AddressingCalc -> Int -> Cpu -> Cpu
-adcBase ac penalty cpu = Cpu mem newRegs (newC)
+adcBase ac penalty cpu = cpu { memory = mem, registers = newRegs, cyc = newC }
   where newRegs = regs {acc=newAcc, status=newStatus}
         newAcc = add8 acc1 acc2 oldCarryInt
         oldCarryInt = if oldCarryFlag then 1 else 0
@@ -406,7 +406,7 @@ adcBase ac penalty cpu = Cpu mem newRegs (newC)
         newC = (cyc cpu) + (if cross then penalty else 0)
 
 ldOp ::  [RegisterType] -> AddressingCalc -> OpSize -> Cyc -> Int -> Cpu -> Cpu
-ldOp rTypes ac size c penalty cpu = Cpu mem newRegs newC
+ldOp rTypes ac size c penalty cpu = cpu { memory = mem, registers = newRegs, cyc = newC }
   where newRegs = updateRegisters (newValueRegs ++ [(Pc,newPc), (Status,newStatus)]) regs
         newValueRegs = map (\t -> (t,newR)) rTypes
         (ea, cross) = ac cpu
@@ -417,12 +417,12 @@ ldOp rTypes ac size c penalty cpu = Cpu mem newRegs newC
         regs = registers cpu
         newC = (cyc cpu) + c + (if cross then penalty else 0)
 
-traceHex :: (Integral a, Show a) => String -> a -> a
-traceHex msg a = trace (msg ++ ": " ++ showHex a "h") a
+traceHex :: (Integral a, Show a) => Cpu -> String -> a -> a
+traceHex cpu msg a = trace cpu (msg ++ ": " ++ showHex a "h") a
 
 
 stOp ::  RegisterType -> AddressingCalc -> OpSize -> Cyc -> Cpu -> Cpu
-stOp rType ac size c cpu = Cpu newMem newRegs newC
+stOp rType ac size c cpu = cpu { memory = newMem, registers = newRegs, cyc = newC }
   where newRegs = updateRegister Pc newPc regs
         newPc = pc(regs) + size
         (memAddress, _) = ac cpu
@@ -433,7 +433,7 @@ stOp rType ac size c cpu = Cpu newMem newRegs newC
         newC = (cyc cpu) + c
 
 bitBase :: AccFuncTwoArg -> AddressingCalc -> Cpu -> Cpu
-bitBase aluOp ac cpu = Cpu mem newRegs (cyc cpu)
+bitBase aluOp ac cpu = cpu { memory = mem, registers = newRegs, cyc = (cyc cpu) }
   where newRegs = regs {acc=newAcc, status=newStatus}
         newAcc = (aluOp) acc1 acc2
         acc1 = acc(regs)
@@ -443,7 +443,7 @@ bitBase aluOp ac cpu = Cpu mem newRegs (cyc cpu)
         regs = registers cpu
 
 shiftOp :: AccFuncOneArg -> BitPos -> AddressingMode -> OpSize -> Cyc -> Cpu -> Cpu
-shiftOp aluOp bitPos f size c cpu = Cpu mem newRegs newC
+shiftOp aluOp bitPos f size c cpu = cpu { memory = mem, registers = newRegs, cyc = newC }
   where newRegs = regs {acc=newAcc, pc=newPc, status=newStatus}
         newAcc = mod newAccVal 256
         newAccVal = (aluOp currentVal)
@@ -460,7 +460,7 @@ shiftOpMem :: AccFuncOneArg -> BitPos -> AddressingCalc -> OpSize -> Cyc -> Cpu 
 shiftOpMem aluOp bitPos ac s c cpu = (cpuProgress s c) (shiftMemBase aluOp bitPos ac cpu)
 
 shiftMemBase :: AccFuncOneArg -> BitPos -> AddressingCalc -> Cpu -> Cpu
-shiftMemBase aluOp bitPos ac cpu = Cpu newMem newRegs (cyc cpu)
+shiftMemBase aluOp bitPos ac cpu = cpu { memory = newMem, registers = newRegs, cyc = (cyc cpu) }
   where newRegs = updateRegisters [(Status, newStatus)] regs
         newValue = mod (aluOp currentVal) 256
         currentVal = (readMem addr mem)
@@ -474,7 +474,7 @@ shiftMemBase aluOp bitPos ac cpu = Cpu newMem newRegs (cyc cpu)
 
 
 transferOp :: RegisterType -> RegisterType -> OpSize -> Cyc -> Cpu -> Cpu
-transferOp from to size c cpu = Cpu mem newRegs newC
+transferOp from to size c cpu = cpu { memory = mem, registers = newRegs, cyc = newC }
   where newRegs = updateRegisters [(to, fromValue),
                                 (Pc,pc(regs) + size),
                                 (Status, newStatus)] regs
@@ -487,7 +487,7 @@ transferOp from to size c cpu = Cpu mem newRegs newC
         newC = (cyc cpu) + c
 
 saxOp :: AddressingCalc -> OpSize -> Cyc -> Cpu -> Cpu
-saxOp ac size c cpu = Cpu mem' regs' cycs'
+saxOp ac size c cpu = cpu { memory = mem', registers = regs', cyc = cycs' }
   where and' = (Data.Bits..&.)
         mem   = memory cpu
         regs  = registers cpu
@@ -568,7 +568,7 @@ rotateL8 value oldCarry = newValue
         newValue = (copyBitFunc) newValShift 0
 
 pushOp :: RegisterType -> OpSize -> Cyc -> Cpu -> Cpu
-pushOp regType size c cpu = push pushValue newC (Cpu mem newRegs newC)
+pushOp regType size c cpu = push pushValue (cpu { memory = mem, registers = newRegs, cyc = newC })
   where regValue = readRegister regType newRegs
         pushValue = if regType == Status
                     then updateFlags [(BrkCommand,True),(Bit5,True)] regValue
@@ -580,7 +580,7 @@ pushOp regType size c cpu = push pushValue newC (Cpu mem newRegs newC)
         newC = (cyc cpu) + c
 
 pullOp :: RegisterType -> OpSize -> Cyc -> Cpu -> Cpu
-pullOp regType size c cpu = Cpu mem newRegs newC
+pullOp regType size c cpu = cpu { memory = mem, registers = newRegs, cyc = newC }
   where newRegs = updateRegisters [(Status, newStatus),
                                    (Pc, pc(regs)+size)] pulledRegs
         newStatus = if regType == Status
@@ -599,7 +599,7 @@ pullMergeReg oldReg pulledReg = or (and oldReg 0x30) (and pulledReg 0xCF)
     or = (.|.)
 
 jsrOp :: AddressingCalc -> OpSize -> Cyc -> Cpu -> Cpu
-jsrOp ac size c cpu = Cpu newMem newRegs newC
+jsrOp ac size c cpu = cpu { memory = newMem, registers = newRegs, cyc = newC }
   where returnPoint = pc(regs) + size - 1
         pushed = pushAddr (returnPoint) cpu
         newMem = memory(pushed)
@@ -609,14 +609,14 @@ jsrOp ac size c cpu = Cpu newMem newRegs newC
         newC = (cyc cpu) + c
 
 rtsOp :: Cyc -> Cpu -> Cpu
-rtsOp c cpu = Cpu mem newRegs newC
+rtsOp c cpu = cpu { memory = mem, registers = newRegs, cyc = newC }
   where mem = memory cpu
         newC = (cyc cpu) + c
         newRegs =  updateRegister Pc (pc(pulledRegs)+1) pulledRegs
           where pulledRegs = registers(pullPc cpu)
 
 rtiOp :: Cyc -> Cpu -> Cpu
-rtiOp c cpu = Cpu mem newRegs newC
+rtiOp c cpu = cpu { memory = mem, registers = newRegs, cyc = newC }
   where mem = memory cpu
         newC = (cyc cpu) + c
         statusCpu = pull Status cpu
@@ -629,7 +629,7 @@ rtiOp c cpu = Cpu mem newRegs newC
               pulledRegs = registers(pullPc statusCpu)
 
 pull :: RegisterType -> Cpu -> Cpu
-pull regType cpu = Cpu mem newRegs 0
+pull regType cpu = cpu { memory = mem, registers = newRegs, cyc = 0 }
   where stackValue = readMem (newSp + stackBase) mem
         newRegs = updateRegisters [(regType,stackValue),
                                    (Sp, newSp)] regs
@@ -640,7 +640,7 @@ pull regType cpu = Cpu mem newRegs 0
 
 
 pullPc :: Cpu -> Cpu
-pullPc cpu = Cpu mem newRegs 0
+pullPc cpu = cpu { memory = mem, registers = newRegs, cyc = 0 }
   where newRegs = updateRegisters [(Pc,stackValue),
                                    (Sp, spValueHigh)] regs
         stackValue = toAddress high low
@@ -653,12 +653,12 @@ pullPc cpu = Cpu mem newRegs 0
 
 
 pushAddr :: Int -> Cpu -> Cpu
-pushAddr addr cpu = push addrLow 0 (push addrHigh 0 cpu)
+pushAddr addr cpu = push addrLow (push addrHigh cpu)
   where addrHigh = fst(fromAddress(addr))
         addrLow = snd(fromAddress(addr))
 
-push :: Int -> Cyc -> Cpu -> Cpu
-push value c cpu = Cpu newMem newRegs c
+push :: Int -> Cpu -> Cpu
+push value cpu = cpu { memory = newMem, registers = newRegs, cyc = (cyc cpu) }
   where newMem = writeMem (spValue + stackBase) value mem
         spValue = sp(regs)
         newRegs = updateRegister Sp newSp regs
@@ -667,14 +667,14 @@ push value c cpu = Cpu newMem newRegs c
         regs = registers cpu
 
 updateFlagOp :: Flag -> Bool -> Cpu -> Cpu
-updateFlagOp flag value cpu = Cpu (memory(cpu)) newRegs newC
+updateFlagOp flag value cpu = cpu { memory = (memory(cpu)), registers = newRegs, cyc = newC }
   where regs = registers(cpu)
         newRegs = (regs {pc = pc(regs)+1, status = statusValue})
         statusValue = updateFlag flag value (status(regs))
         newC = (cyc cpu) + 2
 
 incOp :: RegisterType -> Int -> Int -> Cyc -> Cpu -> Cpu
-incOp regType value size c cpu = Cpu mem newRegs newC
+incOp regType value size c cpu = cpu { memory = mem, registers = newRegs, cyc = newC }
   where newRegs = updateRegisters [(regType, newRegValue),
                                    (Pc,pc(regs)+size),
                                    (Status,newStatus)] regs
@@ -686,7 +686,7 @@ incOp regType value size c cpu = Cpu mem newRegs newC
         newC = (cyc cpu) + c
 
 cmpOp :: AddressingMode -> RegisterType -> OpSize -> Cyc -> Cpu -> Cpu
-cmpOp f regType size c cpu = Cpu mem newRegs newC
+cmpOp f regType size c cpu = cpu { memory = mem, registers = newRegs, cyc = newC }
   where newRegs = updateRegisters [(Status,newStatus),
                                    (Pc,pc(regs)+size)] regs
         regValue = readRegister regType regs
@@ -702,7 +702,7 @@ cmpOp f regType size c cpu = Cpu mem newRegs newC
         newC = (cyc cpu) + c
 
 bneOp :: AddressingMode -> OpSize -> Cpu -> Cpu
-bneOp f size cpu = Cpu mem newRegs 0
+bneOp f size cpu = cpu { memory = mem, registers = newRegs, cyc = 0 }
   where newRegs = updateRegister Pc newPc regs
         newPc = if zeroClear then newPcValue else pc(regs)+size
         newPcValue = add16 (pc(regs)) (f cpu)
@@ -712,7 +712,7 @@ bneOp f size cpu = Cpu mem newRegs 0
 
 
 dcpOp :: AddressingCalc -> OpSize -> Cyc -> Cpu -> Cpu
-dcpOp ac size c cpu = Cpu newMem newRegs newC
+dcpOp ac size c cpu = cpu { memory = newMem, registers = newRegs, cyc = newC }
   where newRegs = updateRegisters [(Pc,pc(regs)+size),
                                    (Status,newStatus2)] regs
         newStatus2 = updateFlags [(Carry,ra >= newMemValue),
@@ -748,7 +748,7 @@ isCarryState cpu = readFlag Carry (status(regs))
   where regs = registers cpu
 
 branchOp :: AddressingMode -> Condition -> OpSize -> Cpu -> Cpu
-branchOp am c size cpu = Cpu mem newRegs newC
+branchOp am c size cpu = cpu { memory = mem, registers = newRegs, cyc = newC }
   where newRegs = updateRegister Pc newPcVal regs
         newPcVal = if doBranch then bPcVal else pcVal
         bPcVal = (add16 (pc regs) offset ) + size
@@ -765,7 +765,7 @@ branchOp am c size cpu = Cpu mem newRegs newC
                else oldC + 2
 
 jmpOp :: AddressingCalc -> OpSize -> Cyc -> Cpu -> Cpu
-jmpOp ac size c cpu = Cpu mem newRegs newC
+jmpOp ac size c cpu = cpu { memory = mem, registers = newRegs, cyc = newC }
  where (newPcVal, _) = ac cpu
        newRegs = updateRegister Pc newPcVal regs
        mem = memory cpu
@@ -781,7 +781,7 @@ nop ac size c cpu = cpu{memory=mem,registers=newRegs, cyc=newC}
         newC = (cyc cpu) + c + (if cross then 1 else 0)
 
 bitTstOp :: AddressingCalc -> OpSize -> Cyc -> Cpu -> Cpu
-bitTstOp ac size c cpu = Cpu mem newRegs newC
+bitTstOp ac size c cpu = cpu { memory = mem, registers = newRegs, cyc = newC }
   where newRegs = updateRegisters [(Status,newStatus),
                                  (Pc,newPc)] regs
         newPc = (pc regs) + size
@@ -803,7 +803,7 @@ sbcOp :: AddressingCalc -> OpSize -> Cyc -> Cpu -> Cpu
 sbcOp ac s c cpu = (cpuProgress s c) (sbcBase ac cpu)
 
 cpuProgress :: OpSize -> Cyc -> Cpu -> Cpu
-cpuProgress s c cpu = Cpu mem' regs' cycs'
+cpuProgress s c cpu = cpu { memory = mem', registers = regs', cyc = cycs' }
   where mem'  = memory cpu
         regs' = regs {pc=pc'}
         regs  = registers cpu
@@ -811,7 +811,7 @@ cpuProgress s c cpu = Cpu mem' regs' cycs'
         cycs' = (cyc cpu) + c
 
 sbcBase :: AddressingCalc -> Cpu -> Cpu
-sbcBase ac cpu = Cpu mem newRegs (cyc cpu)
+sbcBase ac cpu = cpu { memory = mem, registers = newRegs, cyc = (cyc cpu) }
   where newRegs = regs {acc=newAcc, status=newStatus}
         newAcc = sub8c acc1 acc2 oldCarryInt
         oldCarryInt = if oldCarryFlag then 1 else 0
@@ -831,7 +831,7 @@ incMemOp ac v s c cpu = (cpuProgress s c) (incMemBase ac v cpu)
 
 
 incMemBase :: AddressingCalc -> Int -> Cpu -> Cpu
-incMemBase ac value cpu = Cpu newMem newRegs (cyc cpu)
+incMemBase ac value cpu = cpu { memory = newMem, registers = newRegs, cyc = (cyc cpu) }
   where newRegs = regs { status = newStatus }
         newMemValue = mod (oldMemValue + value) 256
         oldMemValue = readMem addr mem
@@ -856,6 +856,22 @@ sreOp ac s c cpu = (cpuProgress s c) (eorBase ac (lsrToMemBase ac cpu))
 rraOp :: AddressingCalc -> OpSize -> Cyc -> Cpu -> Cpu
 rraOp ac s c cpu = (cpuProgress s c) (adcBase ac 0 (rorToMemBase ac cpu))
 
+brkOp :: Cpu -> Cpu
+brkOp cpu = cpu'' { registers = regs', cyc = (cyc cpu) + 7 }
+  where cpu'  = push pcl (push pch cpu)
+        cpu'' = push rp cpu'
+        (pch, pcl) = fromAddress (pc regs)
+        regs  = (registers cpu)
+        regs' = regs { pc = vector }
+        mem = memory cpu
+        vector = toAddress (readMem 0xFFFF mem) (readMem 0xFFFE mem)
+        rp = updateFlag BrkCommand True (status regs)
+
+
+
+
+
+
 
 
 -- Op codes -------------------------------------------------------------------
@@ -864,6 +880,9 @@ rraOp ac s c cpu = (cpuProgress s c) (adcBase ac 0 (rorToMemBase ac cpu))
 
 
 opCodeToFunc :: OpCode -> (Cpu -> Cpu)
+
+opCodeToFunc 0x00 = brkOp
+
 opCodeToFunc 0x18 = clc
 opCodeToFunc 0xD8 = cld
 opCodeToFunc 0x58 = cli
@@ -1185,6 +1204,10 @@ nop_absolute_x = nop absoluteXAddr    3 4
 -------------------------------------------------------------------------------
 
 
+trace :: Cpu -> String -> a -> a
+trace cpu msg a = if debug cpu
+                  then T.trace msg a
+                  else a
 
 runCpu :: Cpu -> Cpu
 runCpu cpu
@@ -1193,14 +1216,13 @@ runCpu cpu
 
 
 isDeadAtExec :: Cpu -> Int -> Bool
-isDeadAtExec cpu@(Cpu mem (Registers pc _ _ _ _ _) _) cn = isDead cpu && cn == 0
+isDeadAtExec cpu cn = isDead cpu && cn == 0
 
 isDead :: Cpu -> Bool
-isDead cpu@(Cpu mem (Registers pc _ _ _ _ _) _) = readMem(pc) mem == 0
+isDead cpu = readMem (pc (registers cpu)) (memory cpu) == 0
 
--- (trace (show (addr, code, temp, stackFF, stackFE, stackFD, stackFC, stackFB, stackFA)) opCode)
 stepCpu :: Cpu -> Cpu
-stepCpu cpu = (opCodeToFunc (trace (debugPrint cpu) opCode)) cpu
+stepCpu cpu = (opCodeToFunc (trace cpu (debugPrint cpu) opCode)) cpu
   where opCode = nextOpCode cpu
 
 showB v = printf "%02X" v
@@ -1248,8 +1270,8 @@ runCpuInteractive cpu = do
   runCpuInteractive (stepCpu cpu)
 
 
-initCpu :: Int -> [Int] -> [(Int,Int)]-> Cpu
-initCpu startAddr program memory = Cpu mem regs 0
+initCpu :: Int -> [Int] -> [(Int,Int)] -> Bool -> Cpu
+initCpu startAddr program memory debug = Cpu mem regs 0 debug
   where mem = initMem (cpuProgram ++ memory)
         regs = Registers {pc=startAddr, status=0x24, acc=0, x=0, y=0, sp=stackStart}
         cpuProgram = zip [startAddr..] program
