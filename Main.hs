@@ -14,7 +14,7 @@ main = do
   bytes <- L.readFile "nestest.nes"
   case R.parse(bytes) of
     Left errMsg -> putStr ("Parse failed:\n" ++ errMsg)
-    Right rom -> putStr (show (compareLogs actualLog nesLog) ++ "\n")
+    Right rom -> putStr ((compareLogs actualLog nesLog) ++ "\n")
       where actualLog = reverse (runCpuRom rom)
             nesLog = (lines log)
       --putStr ("Parse success:\n" ++ (romInfo rom))
@@ -23,9 +23,15 @@ trim :: String -> String
 trim = f . f
    where f = reverse . dropWhile (\x -> isSpace x || x == '\n')
 
-compareLogs actual expected = foundResult
+compareLogs actual expected = pretty foundResult
   where foundResult = find (\(line,(a,e)) -> not (a == e)) linePairs
         linePairs = zip [1..] (zip actual expected)
+        pretty (Just (line, diffPair)) = (show line) ++ "\n" ++ prettyDiff diffPair
+        pretty Nothing               = "No diff"
+
+prettyDiff :: (String, String) -> String
+prettyDiff (l1, l2) = unlines (map show pairs)
+  where pairs = (words l1) `zip` (words l2)
 
 runCpuRom :: Rom -> [String]
 runCpuRom rom = str
