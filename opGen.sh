@@ -1,6 +1,7 @@
-#!/bin/sed -f
+#!/usr/bin/sed -f
 
-s/[A-Z][A-Z][A-Z]/\L&\EOp/
+/[A-Z][A-Z][A-Z]/ y/ABCDEFGHILJKLMNOPRSTUVWXYZ/abcdefghijklmnopqrstuvwxyz/
+s/....../&Op/
 s/(d,x)/indirectXAddr/
 s/(d),y/indirectYAddr/
 s/d,x/zeroPageXAddr/
