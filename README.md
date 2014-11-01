@@ -26,9 +26,12 @@ Milestones
 ----------
 
 **2014-12-31** - picoLAN @ tobias-johanssson
+  * Completed all CPU op codes tested in nestest.nes
 
 **2014-05-01** - West Coast Beer LAN
+  * Initial PPU work and sprite viewer
 
 **2014-02-02** - FOSDEM Red Wine and code
+  * tobias-johansson and mlofjard joined the project
 
 **2013-07-18 20:54** - Initial commit by project founder lobo84.
