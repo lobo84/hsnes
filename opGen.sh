@@ -1,6 +1,6 @@
 #!/usr/bin/sed -f
 
-/[A-Z][A-Z][A-Z]/ y/ABCDEFGHILJKLMNOPRSTUVWXYZ/abcdefghijklmnopqrstuvwxyz/
+/[A-Z][A-Z][A-Z]/ y/ABCDEFGHIJKLMNOPQRSTUVWXYZ/abcdefghijklmnopqrstuvwxyz/
 s/....../&Op/
 s/(d,x)/indirectXAddr/
 s/(d),y/indirectYAddr/
