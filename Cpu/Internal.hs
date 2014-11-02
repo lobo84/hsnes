@@ -532,6 +532,15 @@ aslToMemBase = shiftMemBase ((flip shiftL) 1) 7
 aslToMemOp :: AddressingCalc -> OpSize -> Cyc -> Cpu -> Cpu
 aslToMemOp ac s c cpu = (cpuProgress s c) (aslToMemBase ac cpu)
 
+ancOp :: AddressingCalc -> OpSize -> Cyc -> Cpu -> Cpu
+ancOp ac s c cpu = (cpuProgress s c) (cpu' { registers = regs'' })
+  where cpu' = andBase ac cpu
+        status' = status regs'
+        regs' = registers cpu'
+        neg' = readFlag Neg status'
+        status'' = updateFlag Carry neg' status'
+        regs'' = updateRegister Status status'' regs'
+
 lsrOp :: AddressingMode -> OpSize -> Cyc -> Cpu -> Cpu
 lsrOp = shiftOp ((flip shiftR) 1) 0
 
@@ -1172,8 +1181,8 @@ opCodeToFunc 0xff = iscOp absoluteXAddr 3 7
 -- opCodeToFunc 0x97 = saxOp zeroPageYAddr
 --
 --
--- opCodeToFunc 0x0b = ancOp immediateAddr
--- opCodeToFunc 0x2b = ancOp immediateAddr
+opCodeToFunc 0x0b = ancOp immediateAddr 2 2
+opCodeToFunc 0x2b = ancOp immediateAddr 2 2
 --
 -- opCodeToFunc 0x93 = ahxOp indirectYAddr
 -- opCodeToFunc 0x9f = ahxOp absoluteYAddr
