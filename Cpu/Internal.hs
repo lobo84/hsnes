@@ -22,7 +22,9 @@ module Cpu.Internal(
     resetVector,
     isDead,
     isDeadAtExec,
-    cyc
+    cyc,
+    textAt,
+    debugTestStatus
 ) where
 import qualified Debug.Trace as T
 import Text.Printf
@@ -31,6 +33,7 @@ import Data.List
 import Data.Maybe
 import Data.Word
 import Data.Int
+import Data.Char (ord, chr)
 import Numeric(showHex)
 import Mem
 import Cpu.OpInfo
@@ -1229,23 +1232,37 @@ showB v = printf "%02X" v
 showW v = printf "%04X" v
 
 debugPrint :: Cpu -> String
-debugPrint cpu = show [
+debugPrint cpu = unwords [
       ( showW (pc (registers cpu)))
     , ( showB opCode )
     , ( opInfo opCode )
-    , ( "arg1: " ++ showB (fstArg cpu) )
-    , ( "arg2: " ++ showB (secArg cpu) )
---    , ( point 0x0049 mem )
-    , ( "regs: " ++ (show rs) )
---    , ( showStatus (status rs) )
+    , ( "a1: " ++ showB (fstArg cpu) )
+    , ( "a2: " ++ showB (secArg cpu) )
+    , ( textAt 0x6004 cpu )
+--  , ( point 0x6000 mem )
+--  , ( point 0x6004 mem )
+--  , ( show rs )
+--  , ( showStatus (status rs) )
   ]
   where mem = memory cpu
         rs = registers cpu
         opCode = nextOpCode cpu
 
+textAt :: Address -> Cpu -> String
+textAt addr cpu = map chr validBytes
+  where allBytes   = map (\p -> readMem p mem) [addr..]
+        validBytes = takeWhile (\v -> v /= 0x00) allBytes
+        mem = memory cpu
+
+debugTestStatus cpu = readMem 0x6001 (memory cpu)
+
 point p mem = "*" ++ (showW p) ++ " = " ++ (showW val)
   where val = (shiftL msb 8) + lsb
         msb = (readMem (p+1) mem)
+        lsb = (readMem (p) mem)
+
+readMemWord p mem = (shiftL msb 8) + lsb
+  where msb = (readMem (p+1) mem)
         lsb = (readMem (p) mem)
 
 nextOpCode :: Cpu -> Int
@@ -1270,11 +1287,11 @@ runCpuInteractive cpu = do
   runCpuInteractive (stepCpu cpu)
 
 
-initCpu :: Int -> [Int] -> [(Int,Int)] -> Bool -> Cpu
-initCpu startAddr program memory debug = Cpu mem regs 0 debug
-  where mem = initMem (cpuProgram ++ memory)
+initCpu :: [Int] -> [(Int,Int)] -> Bool -> Cpu
+initCpu program memory debug = Cpu mem regs 0 debug
+  where mem = initMem (memory)
         regs = Registers {pc=startAddr, status=0x24, acc=0, x=0, y=0, sp=stackStart}
-        cpuProgram = zip [startAddr..] program
+        startAddr = readMemWord 0xFFFC mem
 
 
 

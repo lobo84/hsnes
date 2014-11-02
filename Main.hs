@@ -9,13 +9,14 @@ import Data.Char
 import System.IO
 import Data.List (find)
 import qualified Data.Stream as S
-import Data.Stream ((<:>))
 import Control.Applicative
 import Options
+import System.Console.ANSI
 
 
 data Mode = Run
           | CompareLog
+          | RomInfo
     deriving (Bounded, Enum, Show)
 
 data MainOptions = MainOptions
@@ -46,7 +47,14 @@ main = runCommand $ \opts args -> do
   case optMode opts of
     Run        -> runIndefinite opts
     CompareLog -> runCompareLog opts
+    RomInfo    -> showRomInfo   opts
 
+showRomInfo :: MainOptions -> IO ()
+showRomInfo opts = do
+  bytes <- L.readFile (optRom opts)
+  case R.parse(bytes) of
+    Left errMsg -> putStr ("Parse failed:\n" ++ errMsg)
+    Right rom   -> putStrLn $ show rom
 
 
 runCompareLog :: MainOptions -> IO ()
@@ -55,23 +63,34 @@ runCompareLog opts = do
   bytes <- L.readFile (optRom opts)
   case R.parse(bytes) of
     Left errMsg -> putStr ("Parse failed:\n" ++ errMsg)
-    Right rom -> putStr ((compareLogs actualLog nesLog))
-      where actualLog = (runCpuRom opts rom)
+    Right rom   -> putStr ((compareLogs actualLog nesLog))
+      where actualLog = S.map toStateStr cpuStream
+            cpuStream = runCpuRom opts rom
             nesLog = S.fromList (lines log)
+
 
 runIndefinite :: MainOptions -> IO ()
 runIndefinite opts = do
-  log   <- readFile   (optLog opts)
+  clearScreen
   bytes <- L.readFile (optRom opts)
   case R.parse(bytes) of
     Left errMsg -> putStr ("Parse failed:\n" ++ errMsg)
-    Right rom -> mapM_ putStrLn (S.toList (runCpuRom opts rom))
+    Right rom   -> mapM_ (printTextFrom 0x6004) (S.toList cpuStream)
+      where msgStream = S.map toStateStr cpuStream
+            cpuStream = runCpuRom opts rom
 
+printTextFrom :: Int -> Cpu -> IO ()
+printTextFrom addr cpu = do
+  if debugTestStatus cpu == 0xDE
+  then do
+    setCursorPosition 0 0
+    putStrLn text
+--    cursorUp (lineCount + 1)
+--    setCursorColumn 0
+  else return ()
+    where text = (C.textAt addr cpu)
+          lineCount = length $ lines text
 
-
-trim :: String -> String
-trim = f . f
-   where f = reverse . dropWhile (\x -> isSpace x || x == '\n')
 
 compareLogs :: S.Stream String -> S.Stream String -> String
 compareLogs actual expected = pretty foundResult
@@ -87,13 +106,17 @@ prettyDiff :: (String, String) -> String
 prettyDiff (l1, l2) = unlines (map show pairs)
   where pairs = (words l1) `zip` (words l2)
 
-runCpuRom :: MainOptions -> Rom -> S.Stream String
-runCpuRom opts rom = msgStream
+runCpuRom :: MainOptions -> Rom -> S.Stream Cpu
+runCpuRom opts rom = cpuStream
   where intRom = map (\v -> fromIntegral(v)::Int) (L.unpack(R.prgData rom))
-        mem = zip [0xc000..] intRom
-        startcpu = (C.initCpu 0xC000 [] mem (optDebug opts))
+        prgSize = R.sizePrgRom $ R.header rom
+        bank1 = zip [0x8000..] intRom
+        bank2 = if prgSize == 16 * 1024
+                then zip [0xc000..0xFFFF] intRom
+                else []
+        mem = bank1 ++ bank2
+        startcpu = (C.initCpu [] mem (optDebug opts))
         cpuStream = S.iterate C.stepCpu startcpu
-        msgStream = S.map toStateStr cpuStream
 
 
 toStateStr :: Cpu -> String

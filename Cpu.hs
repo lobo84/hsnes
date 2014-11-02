@@ -1,6 +1,6 @@
 module Cpu(Cpu,
-           runCpu, 
-           stepCpu, 
+           runCpu,
+           stepCpu,
            runCpuInteractive,
            initCpu,
            resetVector,
@@ -13,6 +13,8 @@ module Cpu(Cpu,
            status,
            sp,
            cyc,
-           isDeadAtExec) where 
+           isDeadAtExec,
+           textAt,
+           debugTestStatus) where
 
 import Cpu.Internal
