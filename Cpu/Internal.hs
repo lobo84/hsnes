@@ -24,7 +24,8 @@ module Cpu.Internal(
     isDeadAtExec,
     cyc,
     textAt,
-    debugTestStatus
+    debugTestStatus,
+    valueAt
 ) where
 import qualified Debug.Trace as T
 import Text.Printf
@@ -1247,6 +1248,9 @@ debugPrint cpu = unwords [
   where mem = memory cpu
         rs = registers cpu
         opCode = nextOpCode cpu
+
+valueAt :: Address -> Cpu -> Int
+valueAt addr cpu = readMem addr (memory cpu)
 
 textAt :: Address -> Cpu -> String
 textAt addr cpu = map chr validBytes

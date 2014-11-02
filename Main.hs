@@ -71,7 +71,6 @@ runCompareLog opts = do
 
 runIndefinite :: MainOptions -> IO ()
 runIndefinite opts = do
-  clearScreen
   bytes <- L.readFile (optRom opts)
   case R.parse(bytes) of
     Left errMsg -> putStr ("Parse failed:\n" ++ errMsg)
@@ -81,12 +80,15 @@ runIndefinite opts = do
 
 printTextFrom :: Int -> Cpu -> IO ()
 printTextFrom addr cpu = do
-  if debugTestStatus cpu == 0xDE
+  if debugTestStatus cpu == 0xDE && ((C.valueAt 0x6000 cpu) /= 0x80)
   then do
-    setCursorPosition 0 0
-    putStrLn text
---    cursorUp (lineCount + 1)
---    setCursorColumn 0
+    let stat = (printf "%02X %02X %02X %02X" (C.valueAt 0x6000 cpu) (C.valueAt 0x6001 cpu) (C.valueAt 0x6002 cpu) (C.valueAt 0x6003 cpu))
+    let line = stat ++ " " ++ (unwords $ lines text)
+    hideCursor
+    setCursorColumn 0
+    putStr line
+    clearFromCursorToLineEnd
+    showCursor
   else return ()
     where text = (C.textAt addr cpu)
           lineCount = length $ lines text
