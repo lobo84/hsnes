@@ -7,7 +7,7 @@ import Numeric
 import Text.Printf
 import Data.Char
 import System.IO
-import Data.List (find)
+import Data.List (find, intersperse)
 import qualified Data.Stream as S
 import Control.Applicative
 import Options
@@ -32,7 +32,7 @@ enumOption name def desc = defineOption (optionType_enum name) (\o -> o
 instance Options MainOptions where
     defineOptions = pure MainOptions
         <*> enumOption "mode" Run
-            "Run: run rom, CompareLog: run rom and compare each step against log file"
+            (unwords (intersperse "|" (show `map` (enumFrom Run))))
         <*> simpleOption "rom" "nestest.nes"
             "Path to nes rom"
         <*> simpleOption "log" "nestest.log"
