@@ -5,8 +5,11 @@ A Nintendo Entertainment System emulator written in functionally pure Haskell.
 
 Prerequisites
 ---
-* GHC - for compiling the source
-* SDL - for the current PPU code (not needed to run against nestest.nes)
+```
+$ cabal install options
+$ cabal install ansi-terminal
+$ cabal install stream
+```
 
 Building
 --------
