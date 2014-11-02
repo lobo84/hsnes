@@ -854,6 +854,9 @@ incMemBase ac value cpu = cpu { memory = newMem, registers = newRegs, cyc = (cyc
         newMem = writeMem addr newMemValue mem
         regs = registers cpu
 
+alrOp :: AddressingCalc -> OpSize -> Cyc -> Cpu -> Cpu
+alrOp ac s c cpu = (cpuProgress s c) (lsrToMemBase ac (andBase ac cpu))
+
 iscOp :: AddressingCalc -> OpSize -> Cyc -> Cpu -> Cpu
 iscOp ac s c cpu = (cpuProgress s c) (sbcBase ac (incMemBase ac 1 cpu))
 
@@ -1187,11 +1190,11 @@ opCodeToFunc 0x2b = ancOp immediateAddr 2 2
 -- opCodeToFunc 0x93 = ahxOp indirectYAddr
 -- opCodeToFunc 0x9f = ahxOp absoluteYAddr
 --
--- opCodeToFunc 0x4b = alrOp immediateAddr
+opCodeToFunc 0x4b = alrOp immediateAddr 2 2
 --
--- opCodeToFunc 0x6b = arrOp immediateAddr
+-- opCodeToFunc 0x6b = arrOp immediateAddr 2 2
 --
--- opCodeToFunc 0xcb = axsOp immediateAddr
+-- opCodeToFunc 0xcb = axsOp immediateAddr 2 2
 --
 -- opCodeToFunc 0x8b = xaaOp immediateAddr
 --
