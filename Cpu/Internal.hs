@@ -27,6 +27,8 @@ module Cpu.Internal(
     debugTestStatus,
     valueAt
 ) where
+
+
 import qualified Debug.Trace as T
 import Text.Printf
 import Data.Bits
@@ -929,152 +931,152 @@ opCodeToFunc 0x61 = adcOp indirectXAddr 2 6 0
 opCodeToFunc 0x71 = adcOp indirectYAddr 2 5 1
 
 opCodeToFunc 0x29 = andOp immediateAddr 2 2
-opCodeToFunc 0x25 = andOp zeroPageAddr 2 3
+opCodeToFunc 0x25 = andOp zeroPageAddr  2 3
 opCodeToFunc 0x35 = andOp zeroPageXAddr 2 4
-opCodeToFunc 0x2d = andOp absoluteAddr 3 4
+opCodeToFunc 0x2d = andOp absoluteAddr  3 4
 opCodeToFunc 0x3d = andOp absoluteXAddr 3 4 -- +1
 opCodeToFunc 0x39 = andOp absoluteYAddr 3 4 -- +1
-opCodeToFunc 0x21 = andOp indirectXAddr    2 6
-opCodeToFunc 0x31 = andOp indirectYAddr    2 5 -- +1
+opCodeToFunc 0x21 = andOp indirectXAddr 2 6
+opCodeToFunc 0x31 = andOp indirectYAddr 2 5 -- +1
 
 opCodeToFunc 0x49 = eorOp immediateAddr 2 2
-opCodeToFunc 0x45 = eorOp zeroPageAddr 2 3
+opCodeToFunc 0x45 = eorOp zeroPageAddr  2 3
 opCodeToFunc 0x55 = eorOp zeroPageXAddr 2 4
-opCodeToFunc 0x4d = eorOp absoluteAddr 3 4
+opCodeToFunc 0x4d = eorOp absoluteAddr  3 4
 opCodeToFunc 0x5d = eorOp absoluteXAddr 3 4 -- +1
 opCodeToFunc 0x59 = eorOp absoluteYAddr 3 4 -- +1
-opCodeToFunc 0x41 = eorOp indirectXAddr    2 6
-opCodeToFunc 0x51 = eorOp indirectYAddr    2 5 -- +1
+opCodeToFunc 0x41 = eorOp indirectXAddr 2 6
+opCodeToFunc 0x51 = eorOp indirectYAddr 2 5 -- +1
 
-opCodeToFunc 0x09 = oraOp immediateAddr    2 2
-opCodeToFunc 0x05 = oraOp zeroPageAddr     2 3
-opCodeToFunc 0x15 = oraOp zeroPageXAddr    2 4
-opCodeToFunc 0x0d = oraOp absoluteAddr        3 4
-opCodeToFunc 0x1d = oraOp absoluteXAddr       3 4 -- +1
-opCodeToFunc 0x19 = oraOp absoluteYAddr       3 4 -- +1
-opCodeToFunc 0x01 = oraOp indirectXAddr    2 6
-opCodeToFunc 0x11 = oraOp indirectYAddr    2 5 -- +1
+opCodeToFunc 0x09 = oraOp immediateAddr 2 2
+opCodeToFunc 0x05 = oraOp zeroPageAddr  2 3
+opCodeToFunc 0x15 = oraOp zeroPageXAddr 2 4
+opCodeToFunc 0x0d = oraOp absoluteAddr  3 4
+opCodeToFunc 0x1d = oraOp absoluteXAddr 3 4 -- +1
+opCodeToFunc 0x19 = oraOp absoluteYAddr 3 4 -- +1
+opCodeToFunc 0x01 = oraOp indirectXAddr 2 6
+opCodeToFunc 0x11 = oraOp indirectYAddr 2 5 -- +1
 
-opCodeToFunc 0x2a = rolOp accumulatorArg  1 2
+opCodeToFunc 0x2a = rolOp accumulatorArg 1 2
 
-opCodeToFunc 0x26 = rolToMemOp zeroPageAddr 2 5
-opCodeToFunc 0x36 = rolToMemOp zeroPageXAddr    2 6
-opCodeToFunc 0x2e = rolToMemOp absoluteAddr    3 6
-opCodeToFunc 0x3e = rolToMemOp absoluteXAddr       3 7
+opCodeToFunc 0x26 = rolToMemOp zeroPageAddr  2 5
+opCodeToFunc 0x36 = rolToMemOp zeroPageXAddr 2 6
+opCodeToFunc 0x2e = rolToMemOp absoluteAddr  3 6
+opCodeToFunc 0x3e = rolToMemOp absoluteXAddr 3 7
 
-opCodeToFunc 0x6a = rorOp accumulatorArg  1 2
+opCodeToFunc 0x6a = rorOp accumulatorArg 1 2
 
-opCodeToFunc 0x66 = rorToMemOp zeroPageAddr 2 5
-opCodeToFunc 0x76 = rorToMemOp zeroPageXAddr    2 6
-opCodeToFunc 0x6e = rorToMemOp absoluteAddr    3 6
-opCodeToFunc 0x7e = rorToMemOp absoluteXAddr       3 7
+opCodeToFunc 0x66 = rorToMemOp zeroPageAddr  2 5
+opCodeToFunc 0x76 = rorToMemOp zeroPageXAddr 2 6
+opCodeToFunc 0x6e = rorToMemOp absoluteAddr  3 6
+opCodeToFunc 0x7e = rorToMemOp absoluteXAddr 3 7
 
-opCodeToFunc 0x0a = aslOp accumulatorArg  1 2
+opCodeToFunc 0x0a = aslOp accumulatorArg 1 2
 
-opCodeToFunc 0x06 = aslToMemOp zeroPageAddr 2 5
-opCodeToFunc 0x16 = aslToMemOp zeroPageXAddr    2 6
-opCodeToFunc 0x0e = aslToMemOp absoluteAddr    3 6
-opCodeToFunc 0x1e = aslToMemOp absoluteXAddr       3 7
+opCodeToFunc 0x06 = aslToMemOp zeroPageAddr  2 5
+opCodeToFunc 0x16 = aslToMemOp zeroPageXAddr 2 6
+opCodeToFunc 0x0e = aslToMemOp absoluteAddr  3 6
+opCodeToFunc 0x1e = aslToMemOp absoluteXAddr 3 7
 
-opCodeToFunc 0x4a = lsrOp accumulatorArg       1 2
+opCodeToFunc 0x4a = lsrOp accumulatorArg 1 2
 
-opCodeToFunc 0x46 = lsrToMemOp zeroPageAddr 2 5
-opCodeToFunc 0x56 = lsrToMemOp zeroPageXAddr    2 6
-opCodeToFunc 0x4e = lsrToMemOp absoluteAddr    3 6
-opCodeToFunc 0x5e = lsrToMemOp absoluteXAddr       3 7
+opCodeToFunc 0x46 = lsrToMemOp zeroPageAddr  2 5
+opCodeToFunc 0x56 = lsrToMemOp zeroPageXAddr 2 6
+opCodeToFunc 0x4e = lsrToMemOp absoluteAddr  3 6
+opCodeToFunc 0x5e = lsrToMemOp absoluteXAddr 3 7
 
 opCodeToFunc 0xa9 = ldOp [Acc] immediateAddr 2 2 0
 opCodeToFunc 0xa5 = ldOp [Acc] zeroPageAddr  2 3 0
 opCodeToFunc 0xb5 = ldOp [Acc] zeroPageXAddr 2 4 0
-opCodeToFunc 0xad = ldOp [Acc] absoluteAddr     3 4 0
-opCodeToFunc 0xbd = ldOp [Acc] absoluteXAddr    3 4 1 -- +1
-opCodeToFunc 0xb9 = ldOp [Acc] absoluteYAddr    3 4 1 -- +1
+opCodeToFunc 0xad = ldOp [Acc] absoluteAddr  3 4 0
+opCodeToFunc 0xbd = ldOp [Acc] absoluteXAddr 3 4 1
+opCodeToFunc 0xb9 = ldOp [Acc] absoluteYAddr 3 4 1
 opCodeToFunc 0xa1 = ldOp [Acc] indirectXAddr 2 6 0
-opCodeToFunc 0xb1 = ldOp [Acc] indirectYAddr 2 5 1 -- +1
+opCodeToFunc 0xb1 = ldOp [Acc] indirectYAddr 2 5 1
 
-opCodeToFunc 0xa3 = ldOp [Acc, X] indirectXAddr 2 6 0
-opCodeToFunc 0xa7 = ldOp [Acc, X] zeroPageAddr  2 3 0
-opCodeToFunc 0xab = ldOp [Acc, X] immediateAddr 2 2 0
+opCodeToFunc 0xa3 = ldOp [Acc, X] indirectXAddr    2 6 0
+opCodeToFunc 0xa7 = ldOp [Acc, X] zeroPageAddr     2 3 0
+opCodeToFunc 0xab = ldOp [Acc, X] immediateAddr    2 2 0
 opCodeToFunc 0xaf = ldOp [Acc, X] absoluteAddr     3 4 0
-opCodeToFunc 0xb3 = ldOp [Acc, X] indirectYAddr 2 5 1 -- +1
+opCodeToFunc 0xb3 = ldOp [Acc, X] indirectYAddr    2 5 1
 opCodeToFunc 0xb7 = ldOp [Acc, X] zeroPageYArgAddr 2 4 0
 opCodeToFunc 0xbf = ldOp [Acc, X] absoluteYAddr    3 4 1
 
-opCodeToFunc 0xa2 = ldOp [X] immediateAddr 2 2 0
-opCodeToFunc 0xa6 = ldOp [X] zeroPageAddr  2 3 0
+opCodeToFunc 0xa2 = ldOp [X] immediateAddr    2 2 0
+opCodeToFunc 0xa6 = ldOp [X] zeroPageAddr     2 3 0
 opCodeToFunc 0xb6 = ldOp [X] zeroPageYArgAddr 2 4 0
 opCodeToFunc 0xae = ldOp [X] absoluteAddr     3 4 0
-opCodeToFunc 0xbe = ldOp [X] absoluteYAddr    3 4 1 -- +1
+opCodeToFunc 0xbe = ldOp [X] absoluteYAddr    3 4 1
 
 opCodeToFunc 0xa0 = ldOp [Y] immediateAddr 2 2 0
 opCodeToFunc 0xa4 = ldOp [Y] zeroPageAddr  2 3 0
 opCodeToFunc 0xb4 = ldOp [Y] zeroPageXAddr 2 4 0
-opCodeToFunc 0xac = ldOp [Y] absoluteAddr     3 4 0
-opCodeToFunc 0xbc = ldOp [Y] absoluteXAddr    3 4 1
+opCodeToFunc 0xac = ldOp [Y] absoluteAddr  3 4 0
+opCodeToFunc 0xbc = ldOp [Y] absoluteXAddr 3 4 1
 
 opCodeToFunc 0x85 = stOp Acc zeroPageAddr  2 3
 opCodeToFunc 0x95 = stOp Acc zeroPageXAddr 2 4
-opCodeToFunc 0x8d = stOp Acc absoluteAddr     3 4
-opCodeToFunc 0x9d = stOp Acc absoluteXAddr    3 5
-opCodeToFunc 0x99 = stOp Acc absoluteYAddr    3 5
+opCodeToFunc 0x8d = stOp Acc absoluteAddr  3 4
+opCodeToFunc 0x9d = stOp Acc absoluteXAddr 3 5
+opCodeToFunc 0x99 = stOp Acc absoluteYAddr 3 5
 opCodeToFunc 0x81 = stOp Acc indirectXAddr 2 6
 opCodeToFunc 0x91 = stOp Acc indirectYAddr 2 6
 
-opCodeToFunc 0x86 = stOp X zeroPageAddr 2 3
-opCodeToFunc 0x96 = stOp X zeroPageYArgAddr    2 4
-opCodeToFunc 0x8e = stOp X absoluteAddr    3 4
+opCodeToFunc 0x86 = stOp X zeroPageAddr     2 3
+opCodeToFunc 0x96 = stOp X zeroPageYArgAddr 2 4
+opCodeToFunc 0x8e = stOp X absoluteAddr     3 4
 
 opCodeToFunc 0x84 = stOp Y zeroPageAddr  2 3
 opCodeToFunc 0x94 = stOp Y zeroPageXAddr 2 4
-opCodeToFunc 0x8c = stOp Y absoluteAddr     3 4
+opCodeToFunc 0x8c = stOp Y absoluteAddr  3 4
 
-opCodeToFunc 0x83 = saxOp indirectXAddr 2 5
-opCodeToFunc 0x87 = saxOp zeroPageAddr  2 3
+opCodeToFunc 0x83 = saxOp indirectXAddr    2 5
+opCodeToFunc 0x87 = saxOp zeroPageAddr     2 3
 opCodeToFunc 0x8f = saxOp absoluteAddr     3 4
-opCodeToFunc 0x97 = saxOp zeroPageYArgAddr    2 4
+opCodeToFunc 0x97 = saxOp zeroPageYArgAddr 2 4
 
-opCodeToFunc 0xaa = transferOp Acc X 1 2
-opCodeToFunc 0xa8 = transferOp Acc Y 1 2
-opCodeToFunc 0xba = transferOp Sp X  1 2
-opCodeToFunc 0x8a = transferOp X Acc 1 2
-opCodeToFunc 0x9a = transferOp X Sp  1 2
-opCodeToFunc 0x98 = transferOp Y Acc 1 2
+opCodeToFunc 0xaa = transferOp Acc X   1 2
+opCodeToFunc 0xa8 = transferOp Acc Y   1 2
+opCodeToFunc 0xba = transferOp Sp  X   1 2
+opCodeToFunc 0x8a = transferOp X   Acc 1 2
+opCodeToFunc 0x9a = transferOp X   Sp  1 2
+opCodeToFunc 0x98 = transferOp Y   Acc 1 2
 
-opCodeToFunc 0x48 = pushOp Acc 1 3
+opCodeToFunc 0x48 = pushOp Acc    1 3
 opCodeToFunc 0x08 = pushOp Status 1 3
 
-opCodeToFunc 0x68 = pullOp Acc 1 4
+opCodeToFunc 0x68 = pullOp Acc    1 4
 opCodeToFunc 0x28 = pullOp Status 1 4
 
 opCodeToFunc 0x20 = jsrOp absoluteAddr 3 6
 opCodeToFunc 0x60 = rtsOp 6
 opCodeToFunc 0x40 = rtiOp 6
 
-opCodeToFunc 0xc9 = cmpOp immediate    Acc 2 2
-opCodeToFunc 0xc5 = cmpOp zeroPage     Acc 2 3
-opCodeToFunc 0xd5 = cmpOp zeroPageX    Acc 2 4
+opCodeToFunc 0xc9 = cmpOp immediate Acc 2 2
+opCodeToFunc 0xc5 = cmpOp zeroPage  Acc 2 3
+opCodeToFunc 0xd5 = cmpOp zeroPageX Acc 2 4
 opCodeToFunc 0xcd = cmpOp absolute  Acc 3 4
 opCodeToFunc 0xdd = cmpOp absoluteX Acc 3 4 -- +1
 opCodeToFunc 0xd9 = cmpOp absoluteY Acc 3 4 -- +1
-opCodeToFunc 0xc1 = cmpOp indirectX    Acc 2 6
-opCodeToFunc 0xd1 = cmpOp indirectY    Acc 2 5 -- +1
+opCodeToFunc 0xc1 = cmpOp indirectX Acc 2 6
+opCodeToFunc 0xd1 = cmpOp indirectY Acc 2 5 -- +1
 
-opCodeToFunc 0xe0 = cmpOp immediate   X 2 2
-opCodeToFunc 0xe4 = cmpOp zeroPage    X 2 3
-opCodeToFunc 0xec = cmpOp absolute X 3 4
+opCodeToFunc 0xe0 = cmpOp immediate X 2 2
+opCodeToFunc 0xe4 = cmpOp zeroPage  X 2 3
+opCodeToFunc 0xec = cmpOp absolute  X 3 4
 
-opCodeToFunc 0xc0 = cmpOp immediate   Y 2 2
-opCodeToFunc 0xc4 = cmpOp zeroPage    Y 2 3
-opCodeToFunc 0xcc = cmpOp absolute Y 3 4
+opCodeToFunc 0xc0 = cmpOp immediate Y 2 2
+opCodeToFunc 0xc4 = cmpOp zeroPage  Y 2 3
+opCodeToFunc 0xcc = cmpOp absolute  Y 3 4
 
-opCodeToFunc 0xe6 = incMemOp zeroPageAddr 1 2 5
-opCodeToFunc 0xf6 = incMemOp zeroPageXAddr    1 2 6
-opCodeToFunc 0xee = incMemOp absoluteAddr 1 3 6
+opCodeToFunc 0xe6 = incMemOp zeroPageAddr  1 2 5
+opCodeToFunc 0xf6 = incMemOp zeroPageXAddr 1 2 6
+opCodeToFunc 0xee = incMemOp absoluteAddr  1 3 6
 opCodeToFunc 0xfe = incMemOp absoluteXAddr 1 3 7
 
-opCodeToFunc 0xc6 = incMemOp zeroPageAddr (-1) 2 5
-opCodeToFunc 0xd6 = incMemOp zeroPageXAddr    (-1) 2 6
-opCodeToFunc 0xce = incMemOp absoluteAddr (-1) 3 6
+opCodeToFunc 0xc6 = incMemOp zeroPageAddr  (-1) 2 5
+opCodeToFunc 0xd6 = incMemOp zeroPageXAddr (-1) 2 6
+opCodeToFunc 0xce = incMemOp absoluteAddr  (-1) 3 6
 opCodeToFunc 0xde = incMemOp absoluteXAddr (-1) 3 7
 
 opCodeToFunc 0xe8 = incOp X   1  1 2
@@ -1221,9 +1223,9 @@ opCodeToFunc opCode = error ("op code " ++ (showHex(opCode) "") ++ " Not impleme
 nop_implied    = nop immediateAddr 1 2
 nop_immediate  = nop immediateAddr 2 2
 nop_zeropage   = nop zeroPageAddr  2 3
-nop_absolute   = nop absoluteAddr     3 4
+nop_absolute   = nop absoluteAddr  3 4
 nop_zeropage_x = nop zeroPageXAddr 2 4
-nop_absolute_x = nop absoluteXAddr    3 4
+nop_absolute_x = nop absoluteXAddr 3 4
 
 
 
