@@ -864,8 +864,8 @@ arrOp ac s c cpu = (cpuProgress s c) cpu' { registers = regs'}
   where cpu' = (rorToMemBase ac (andBase ac cpu))
         regs = registers cpu
         (_, value) = ac cpu'
-        bit5 = True
-        bit6 = True
+        bit5 = testBit value 5
+        bit6 = testBit value 6
         bit6xorbit5 = xor bit6 bit5
         regs' = updateRegister Status status' regs
         status' = updateFlags [(Carry, bit6), (OverFlow,bit6xorbit5)] (status(regs))
@@ -1321,7 +1321,7 @@ initCpu :: [Int] -> [(Int,Int)] -> Bool -> Cpu
 initCpu program memory debug = Cpu mem regs 0 debug
   where mem = initMem (memory)
         regs = Registers {pc=startAddr, status=0x24, acc=0, x=0, y=0, sp=stackStart}
-        startAddr = readMemWord 0xFFFC mem
+        startAddr = readMemWord resetVector mem
 
 
 
