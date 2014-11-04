@@ -857,6 +857,18 @@ incMemBase ac value cpu = cpu { memory = newMem, registers = newRegs, cyc = (cyc
 alrOp :: AddressingCalc -> OpSize -> Cyc -> Cpu -> Cpu
 alrOp ac s c cpu = (cpuProgress s c) (lsrToMemBase ac (andBase ac cpu))
 
+arrOp :: AddressingCalc -> OpSize -> Cyc -> Cpu -> Cpu
+arrOp ac s c cpu = (cpuProgress s c) cpu' { registers = regs'}
+  where cpu' = (rorToMemBase ac (andBase ac cpu))
+        regs = registers cpu
+        (_, value) = ac cpu'
+        bit5 = True
+        bit6 = True
+        bit6xorbit5 = xor bit6 bit5
+        regs' = updateRegister Status status' regs
+        status' = updateFlags [(Carry, bit6), (OverFlow,bit6xorbit5)] (status(regs))
+
+
 iscOp :: AddressingCalc -> OpSize -> Cyc -> Cpu -> Cpu
 iscOp ac s c cpu = (cpuProgress s c) (sbcBase ac (incMemBase ac 1 cpu))
 
@@ -1191,8 +1203,8 @@ opCodeToFunc 0x2b = ancOp immediateAddr 2 2
 -- opCodeToFunc 0x9f = ahxOp absoluteYAddr
 --
 opCodeToFunc 0x4b = alrOp immediateAddr 2 2
---
--- opCodeToFunc 0x6b = arrOp immediateAddr 2 2
+
+opCodeToFunc 0x6b = arrOp immediateAddr 2 2
 --
 -- opCodeToFunc 0xcb = axsOp immediateAddr 2 2
 --
