@@ -958,10 +958,16 @@ brkOp cpu = cpu'' { registers = regs', cyc = (cyc cpu) + 7 }
         rp = updateFlag BrkCommand True (status regs)
 
 
-
-
-
-
+kilOp :: Cpu -> Cpu
+--kilOp cpu = cpu { registers = regs }
+--  where regs = updateRegister Pc resetAddr (registers cpu)
+--        resetAddr = toAddress resetHigh resetLow
+--        resetLow = readMem resetVector mem
+--        resetHigh = readMem (resetVector + 1) mem
+--        mem = memory cpu
+kilOp cpu = error ("KIL op halted processor" ++ line)
+  where line = (unwords $ lines text)
+        text = (textAt 0x6004 cpu)
 
 
 -- Op codes -------------------------------------------------------------------
@@ -1267,6 +1273,21 @@ opCodeToFunc 0x4b = alrOp immediateAddr 2 2
 opCodeToFunc 0x6b = arrOp immediateAddr 2 2
 
 opCodeToFunc 0xcb = axsOp immediateAddr 2 2
+
+-- KIL ops should hang processsor
+opCodeToFunc 0x02 = kilOp --nop_implied
+opCodeToFunc 0x12 = kilOp --nop_implied
+opCodeToFunc 0x22 = kilOp --nop_implied
+opCodeToFunc 0x32 = kilOp --nop_implied
+opCodeToFunc 0x42 = kilOp --nop_implied
+opCodeToFunc 0x52 = kilOp --nop_implied
+opCodeToFunc 0x62 = kilOp --nop_implied
+opCodeToFunc 0x72 = kilOp --nop_implied
+opCodeToFunc 0x92 = kilOp --nop_implied
+opCodeToFunc 0xB2 = kilOp --nop_implied
+opCodeToFunc 0xD2 = kilOp --nop_implied
+opCodeToFunc 0xF2 = kilOp --nop_implied
+
 --
 -- opCodeToFunc 0x8b = xaaOp immediateAddr
 --
@@ -1284,8 +1305,6 @@ nop_zeropage   = nop zeroPageAddr  2 3
 nop_absolute   = nop absoluteAddr  3 4
 nop_zeropage_x = nop zeroPageXAddr 2 4
 nop_absolute_x = nop absoluteXAddr 3 4
-
-
 
 
 -- Running --------------------------------------------------------------------
