@@ -513,7 +513,7 @@ axsOp ac size c cpu = (cpuProgress size c) (cpu { registers = regs'})
         (addr, _) = ac cpu
         andResult = and currentAcc currentX
         x' = sub8 andResult value
-        newCarry = subWillCarry andResult value True -- TODO: Should this always be true?
+        newCarry = subWillCarry andResult value True
         regs = registers cpu
         currentAcc = acc regs
         currentX = x regs
@@ -537,11 +537,23 @@ shaOp ac size c cpu = (cpuProgress size c) cpu { memory = mem' }
 
 
 shxOp :: AddressingCalc -> OpSize -> Cyc -> Cpu -> Cpu
-shxOp ac size c cpu = (cpuProgress size c) cpu 
+shxOp ac size c cpu = (cpuProgress size c) (shBase ac X cpu)
 
 shyOp :: AddressingCalc -> OpSize -> Cyc -> Cpu -> Cpu
-shyOp ac size c cpu = (cpuProgress size c) cpu 
+shyOp ac size c cpu = (cpuProgress size c) (shBase ac Y cpu)
 
+shBase :: AddressingCalc -> RegisterType -> Cpu -> Cpu
+shBase ac regType cpu = cpu { memory = mem'}
+  where regs = registers cpu
+        val = and currentRegVal (high + 1)
+        currentRegVal = readRegister regType regs
+        (addr, pageCrossed) = ac cpu
+        (high, low) = fromAddress addr
+        mem = memory cpu
+        storeAddr = toAddress newHigh low
+        mem' = writeMem storeAddr val mem
+        newHigh = if pageCrossed then val else high
+        and = (Data.Bits..&.)
 
 andBase :: AddressingCalc -> Cpu -> Cpu
 andBase = bitBase (Data.Bits..&.)
@@ -907,22 +919,15 @@ alrOp ac s c cpu = (cpuProgress s c) cpu' { registers = regs'}
 arrOp :: AddressingCalc -> OpSize -> Cyc -> Cpu -> Cpu
 arrOp ac s c cpu = (cpuProgress s c) cpu' { registers = regs'}
   where cpu' = andBase ac cpu
-
-        --currentAcc = acc regs
-        --carryAfterAnd = readFlag Carry currentStatus
-        --modAcc = acc'--bitFunc acc' 7
-        --bitFunc = if (carryAfterAnd) then setBit else clearBit
         acc' = acc regs
         rotAcc = rotateR8 acc' (readFlag Carry currentStatus)
         regs = registers cpu'
         currentStatus = status regs
-        --value = readMem addr (memory cpu')
-        --(addr, _) = ac cpu'
         bit5 = testBit rotAcc 5
         bit6 = testBit rotAcc 6
         bit6xorbit5 = xor bit6 bit5
         regs' = updateRegisters [(Status, status''), (Acc, rotAcc)] regs
-        status' = updateStatusFlagsNumericOp currentStatus acc'
+        status' = updateStatusFlagsNumericOp currentStatus rotAcc
         status'' = updateFlags [(Carry, bit6), (OverFlow,bit6xorbit5)] status'
 
 
