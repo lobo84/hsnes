@@ -439,13 +439,12 @@ stOp rType ac size c cpu = cpu { memory = newMem, registers = newRegs, cyc = new
         newC = (cyc cpu) + c
 
 bitBase :: AccFuncTwoArg -> AddressingCalc -> Cpu -> Cpu
-bitBase aluOp ac cpu = cpu { memory = mem, registers = newRegs, cyc = (cyc cpu) }
+bitBase aluOp ac cpu = cpu { registers = newRegs, cyc = (cyc cpu) }
   where newRegs = regs {acc=newAcc, status=newStatus}
         newAcc = (aluOp) acc1 acc2
         acc1 = acc(regs)
         acc2 = readMemValue ac cpu
         newStatus = updateStatusFlagsNumericOp (status(regs)) newAcc
-        mem = memory cpu
         regs = registers cpu
 
 shiftOp :: AccFuncOneArg -> BitPos -> AddressingMode -> OpSize -> Cyc -> Cpu -> Cpu
@@ -507,6 +506,43 @@ saxOp ac size c cpu = cpu { memory = mem', registers = regs', cyc = cycs' }
         mem' = writeMem addr rx' (memory cpu)
         cycs' = (cyc cpu) + c + (if cross then 1 else 0)
 
+axsOp :: AddressingCalc -> OpSize -> Cyc -> Cpu -> Cpu
+axsOp ac size c cpu = (cpuProgress size c) (cpu { registers = regs'})
+  where regs' = updateRegisters [(X, x'), (Status, status'')] regs
+        value = readMem addr (memory cpu)
+        (addr, _) = ac cpu
+        andResult = and currentAcc currentX
+        x' = sub8 andResult value
+        newCarry = subWillCarry andResult value True -- TODO: Should this always be true?
+        regs = registers cpu
+        currentAcc = acc regs
+        currentX = x regs
+        status' = updateStatusFlagsNumericOp (status regs) x' 
+        status'' = updateFlag Carry (not newCarry) status'
+        and = (Data.Bits..&.)
+
+shaOp :: AddressingCalc -> OpSize -> Cyc -> Cpu -> Cpu
+shaOp ac size c cpu = (cpuProgress size c) cpu { memory = mem' }
+  where regs = registers cpu
+        val = and currentAcc (and currentX (high + 1))
+        currentAcc = acc regs
+        currentX = x regs
+        (addr, pageCrossed) = ac cpu
+        (high, low) = fromAddress addr
+        mem = memory cpu
+        storeAddr = toAddress newHigh low
+        mem' = writeMem storeAddr val mem
+        newHigh = if pageCrossed then val else high
+        and = (Data.Bits..&.)
+
+
+shxOp :: AddressingCalc -> OpSize -> Cyc -> Cpu -> Cpu
+shxOp ac size c cpu = (cpuProgress size c) cpu 
+
+shyOp :: AddressingCalc -> OpSize -> Cyc -> Cpu -> Cpu
+shyOp ac size c cpu = (cpuProgress size c) cpu 
+
+
 andBase :: AddressingCalc -> Cpu -> Cpu
 andBase = bitBase (Data.Bits..&.)
 
@@ -535,13 +571,13 @@ aslToMemOp :: AddressingCalc -> OpSize -> Cyc -> Cpu -> Cpu
 aslToMemOp ac s c cpu = (cpuProgress s c) (aslToMemBase ac cpu)
 
 ancOp :: AddressingCalc -> OpSize -> Cyc -> Cpu -> Cpu
-ancOp ac s c cpu = (cpuProgress s c) (cpu' { registers = regs'' })
+ancOp ac s c cpu = (cpuProgress s c) (cpu' { registers = regs' })
   where cpu' = andBase ac cpu
-        status' = status regs'
-        regs' = registers cpu'
-        neg' = readFlag Neg status'
-        status'' = updateFlag Carry neg' status'
-        regs'' = updateRegister Status status'' regs'
+        currentStatus = status regs
+        regs = registers cpu'
+        neg' = readFlag Neg currentStatus
+        status' = updateFlag Carry neg' currentStatus
+        regs' = updateRegister Status status' regs
 
 lsrOp :: AddressingMode -> OpSize -> Cyc -> Cpu -> Cpu
 lsrOp = shiftOp ((flip shiftR) 1) 0
@@ -857,18 +893,37 @@ incMemBase ac value cpu = cpu { memory = newMem, registers = newRegs, cyc = (cyc
         regs = registers cpu
 
 alrOp :: AddressingCalc -> OpSize -> Cyc -> Cpu -> Cpu
-alrOp ac s c cpu = (cpuProgress s c) (lsrToMemBase ac (andBase ac cpu))
+alrOp ac s c cpu = (cpuProgress s c) cpu' { registers = regs'}
+  where cpu' = andBase ac cpu
+        regs = registers cpu'
+        andAcc = acc regs
+        shiftAcc = shiftR andAcc 1
+        oldBit0 = testBit andAcc 0
+        status' = updateStatusFlagsNumericOp (status regs) shiftAcc
+        status'' = updateFlag Carry oldBit0 status'
+        regs' = updateRegisters [(Acc, shiftAcc), (Status, status'')] regs
+
 
 arrOp :: AddressingCalc -> OpSize -> Cyc -> Cpu -> Cpu
 arrOp ac s c cpu = (cpuProgress s c) cpu' { registers = regs'}
-  where cpu' = (rorToMemBase ac (andBase ac cpu))
-        regs = registers cpu
-        (_, value) = ac cpu'
-        bit5 = testBit value 5
-        bit6 = testBit value 6
+  where cpu' = andBase ac cpu
+
+        --currentAcc = acc regs
+        --carryAfterAnd = readFlag Carry currentStatus
+        --modAcc = acc'--bitFunc acc' 7
+        --bitFunc = if (carryAfterAnd) then setBit else clearBit
+        acc' = acc regs
+        rotAcc = rotateR8 acc' (readFlag Carry currentStatus)
+        regs = registers cpu'
+        currentStatus = status regs
+        --value = readMem addr (memory cpu')
+        --(addr, _) = ac cpu'
+        bit5 = testBit rotAcc 5
+        bit6 = testBit rotAcc 6
         bit6xorbit5 = xor bit6 bit5
-        regs' = updateRegister Status status' regs
-        status' = updateFlags [(Carry, bit6), (OverFlow,bit6xorbit5)] (status(regs))
+        regs' = updateRegisters [(Status, status''), (Acc, rotAcc)] regs
+        status' = updateStatusFlagsNumericOp currentStatus acc'
+        status'' = updateFlags [(Carry, bit6), (OverFlow,bit6xorbit5)] status'
 
 
 iscOp :: AddressingCalc -> OpSize -> Cyc -> Cpu -> Cpu
@@ -1191,24 +1246,22 @@ opCodeToFunc 0xf3 = iscOp indirectYAddr 2 8
 opCodeToFunc 0xf7 = iscOp zeroPageXAddr 2 6
 opCodeToFunc 0xfb = iscOp absoluteYAddr 3 7
 opCodeToFunc 0xff = iscOp absoluteXAddr 3 7
---
--- opCodeToFunc 0x83 = saxOp indirectXAddr
--- opCodeToFunc 0x87 = saxOp zeroPageAddr
--- opCodeToFunc 0x8f = saxOp absoluteAddr
--- opCodeToFunc 0x97 = saxOp zeroPageYAddr
---
---
+
+
 opCodeToFunc 0x0b = ancOp immediateAddr 2 2
 opCodeToFunc 0x2b = ancOp immediateAddr 2 2
---
--- opCodeToFunc 0x93 = ahxOp indirectYAddr
--- opCodeToFunc 0x9f = ahxOp absoluteYAddr
---
+
+opCodeToFunc 0x93 = shaOp indirectYAddr 2 2 -- cyc unknown
+opCodeToFunc 0x9f = shaOp absoluteYAddr 3 2 -- cyc unknown
+
+opCodeToFunc 0x9c = shyOp absoluteXAddr 3 2 -- cyc unknown
+opCodeToFunc 0x9e = shxOp absoluteYAddr 3 2 -- cyc unknown
+
 opCodeToFunc 0x4b = alrOp immediateAddr 2 2
 
 opCodeToFunc 0x6b = arrOp immediateAddr 2 2
---
--- opCodeToFunc 0xcb = axsOp immediateAddr 2 2
+
+opCodeToFunc 0xcb = axsOp immediateAddr 2 2
 --
 -- opCodeToFunc 0x8b = xaaOp immediateAddr
 --
