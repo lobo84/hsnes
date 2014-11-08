@@ -213,6 +213,11 @@ updateStatusFlagsNumericOp currentStatus newValue = newStatus
         zeroFlag = newValue == 0
         negFlag = testBit newValue 7
 
+xorBool :: Bool -> Bool -> Bool
+xorBool True False = True
+xorBool False True = True
+xorBool True True = False
+xorBool False False = False
 
 
 -- Arguments and addressing ---------------------------------------------------
@@ -925,7 +930,7 @@ arrOp ac s c cpu = (cpuProgress s c) cpu' { registers = regs'}
         currentStatus = status regs
         bit5 = testBit rotAcc 5
         bit6 = testBit rotAcc 6
-        bit6xorbit5 = xor bit6 bit5
+        bit6xorbit5 = xorBool bit6 bit5
         regs' = updateRegisters [(Status, status''), (Acc, rotAcc)] regs
         status' = updateStatusFlagsNumericOp currentStatus rotAcc
         status'' = updateFlags [(Carry, bit6), (OverFlow,bit6xorbit5)] status'
