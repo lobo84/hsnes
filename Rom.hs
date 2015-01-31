@@ -167,13 +167,6 @@ instance Monad Parse where
   (>>) = (==>&)
   fail = bail
 
-{-
-parse :: Parse a -> L.ByteString -> Either String a
-parse parser initState = case runParse parser (ParseState initState 0) of
-  Left err-> Left err
-  Right (result, _) -> Right result
-
--}
 
 toByteCount :: Int -> Word8 -> Int
 toByteCount c b = c * 1024 * (fromIntegral b)
@@ -223,24 +216,3 @@ parse :: L.ByteString -> Either String Rom
 parse bytes = case runParse (parseP bytes) (ParseState bytes 0) of
   Left errorMsg -> Left errorMsg
   Right (rom,_) -> Right rom
-
-{--
-
-parseP :: L.ByteString -> Maybe Rom
-parseP s = matchHeader (L8.pack "NES\SUB") s >>=
-           getByteNum                       >>=
-           \(prgSize, s3) -> getByteNum s3  >>=
-           \(chrSize, s4) -> Just (Rom (Header prgSize chrSize 0) L.empty L.empty L.empty)
-   ---}
-                             {-
-parseP :: L.ByteString -> Maybe (Rom, L.ByteString)
-parseP s = case matchHeader (L8.pack "NES") s of
-  Nothing -> Nothing
-  Just s1 ->
-    case matchByte 0x1A s1 of
-      Nothing -> Nothing
-      Just s2 ->
-        case getByte s2 of
-          Nothing -> Nothing
-          Just (prgRomSize,s3) -> Nothing
--}
