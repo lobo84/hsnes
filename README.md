@@ -28,7 +28,7 @@ This will load and execute nestest.nes and compare log output with nestest.log.
 Milestones
 ----------
 
-**2014-12-31** - picoLAN @ tobias-johanssson
+**2014-10-31** - picoLAN @ tobias-johanssson
   * Completed all CPU op codes tested in nestest.nes
 
 **2014-05-01** - West Coast Beer LAN
