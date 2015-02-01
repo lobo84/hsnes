@@ -156,10 +156,10 @@ updateFlag :: Flag -> Bool -> RegValue -> RegValue
 updateFlag flag True regValue = setBit regValue (flagPos flag)
 updateFlag flag False regValue = clearBit regValue (flagPos flag)
 
-resetVector :: Int
 resetVector = 0xFFFC
-stackStart = 0xFD
-stackBase = 0x100
+irqVector   = 0xFFFE
+stackStart  = 0xFD
+stackBase   = 0x100
 
 updateRegister :: RegisterType -> RegValue -> Registers -> Registers
 updateRegister Pc value regs = regs{pc=value}
@@ -194,12 +194,13 @@ sei = updateFlagOp IrqDis True
 -- State ----------------------------------------------------------------------
 -------------------------------------------------------------------------------
 
-resetCpu cpu = cpu { registers = regs }
-  where regs = updateRegister Pc resetAddr (registers cpu)
-        resetAddr = toAddress resetHigh resetLow
-        resetLow = readMem resetVector mem
-        resetHigh = readMem (resetVector + 1) mem
+resetCpu cpu = cpu { registers = regs' }
+  where regs' =  regs { pc = resetAddr, status = status', sp = sp'-3 }
+        sp' = sp regs
+        regs = (registers cpu)
+        resetAddr = readMemWord resetVector mem
         mem = memory cpu
+        status' = updateFlag IrqDis True (status regs)
 
 
 -- Arithemtic -----------------------------------------------------------------
@@ -996,7 +997,7 @@ brkOp cpu = cpu'' { registers = regs', cyc = (cyc cpu) + 7 }
         regs  = (registers cpu)
         regs' = regs { pc = vector }
         mem = memory cpu
-        vector = toAddress (readMem 0xFFFF mem) (readMem 0xFFFE mem)
+        vector = readMemWord irqVector mem
         rp = updateFlag BrkCommand True (status regs)
 
 
@@ -1384,7 +1385,7 @@ debugPrint cpu = unwords [
     , ( opInfo opCode )
     , ( "a1: " ++ showB (fstArg cpu) )
     , ( "a2: " ++ showB (secArg cpu) )
-    , ( "res: " ++ (point 0xFFFE mem) )
+    , ( "res: " ++ (point resetVector mem) )
     , ( textAt 0x6004 cpu )
 --  , ( point 0x6000 mem )
 --  , ( point 0x6004 mem )
@@ -1407,9 +1408,7 @@ textAt addr cpu = map chr validBytes
 debugTestStatus cpu = readMem 0x6001 (memory cpu)
 
 point p mem = "*" ++ (showW p) ++ " = " ++ (showW val)
-  where val = (shiftL msb 8) + lsb
-        msb = (readMem (p+1) mem)
-        lsb = (readMem (p) mem)
+  where val = readMemWord p mem
 
 readMemWord p mem = (shiftL msb 8) + lsb
   where msb = (readMem (p+1) mem)
