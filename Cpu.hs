@@ -16,6 +16,8 @@ module Cpu(Cpu,
            isDeadAtExec,
            textAt,
            debugTestStatus,
-           valueAt) where
+           valueAt,
+           halted,
+           resetCpu) where
 
 import Cpu.Internal
