@@ -954,7 +954,7 @@ rraOp ac s c cpu = (cpuProgress s c) (adcBase ac 0 (rorToMemBase ac cpu))
 brkOp :: Cpu -> Cpu
 brkOp cpu = cpu'' { registers = regs', cyc = (cyc cpu) + 7 }
   where cpu'  = push pcl (push pch cpu)
-        cpu'' = push (status regs) cpu'
+        cpu'' = push rp cpu'
         (pch, pcl) = fromAddress (pc regs)
         regs  = (registers cpu)
         regs' = regs { pc = vector }
