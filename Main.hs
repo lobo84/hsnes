@@ -72,17 +72,41 @@ runCompareLog opts = do
 runIndefinite :: MainOptions -> IO ()
 runIndefinite opts = do
   bytes <- L.readFile (optRom opts)
-  case R.parse(bytes) of
+  case R.parse bytes of
     Left errMsg -> putStr ("Parse failed:\n" ++ errMsg)
-    Right rom   -> mapM_ (printTextFrom 0x6004) (S.toList cpuStream)
-      where msgStream = S.map toStateStr cpuStream
-            cpuStream = runCpuRom opts rom
+    Right rom   -> do
+      cpu <- runIndefiniteFrom romCpu
+      return ()
+        where romCpu = cpuFromRom opts rom
+
+runIndefiniteFrom :: Cpu -> IO Cpu
+runIndefiniteFrom cpu = do
+  cpu' <- reactToCpu cpu
+  runIndefiniteFrom (C.stepCpu cpu')
+
+reactToCpu :: Cpu -> IO Cpu
+reactToCpu cpu = do
+      mChar <- stdin `ifReadyDo` getChar
+      let cpu' = case mChar of
+                   Just x -> resetCpu cpu
+                   _        -> cpu
+      printTextFrom 0x6004 cpu'
+      return cpu'
+
+ifReadyDo :: Handle -> IO a -> IO (Maybe a)
+ifReadyDo hnd x = hReady hnd >>= f
+   where f True = x >>= return . Just
+         f _    = return Nothing
 
 printTextFrom :: Int -> Cpu -> IO ()
 printTextFrom addr cpu = do
   if debugTestStatus cpu == 0xDE && ((C.valueAt 0x6000 cpu) /= 0x80)
   then do
-    let stat = (printf "%02X %02X %02X %02X" (C.valueAt 0x6000 cpu) (C.valueAt 0x6001 cpu) (C.valueAt 0x6002 cpu) (C.valueAt 0x6003 cpu))
+    let stat = (printf "%02X %02X %02X %02X"
+                  (C.valueAt 0x6000 cpu)
+                  (C.valueAt 0x6001 cpu)
+                  (C.valueAt 0x6002 cpu)
+                  (C.valueAt 0x6003 cpu))
     let line = stat ++ " " ++ (unwords $ lines text)
     hideCursor
     setCursorColumn 0
@@ -109,7 +133,13 @@ prettyDiff (l1, l2) = unlines (map show pairs)
   where pairs = (words l1) `zip` (words l2)
 
 runCpuRom :: MainOptions -> Rom -> S.Stream Cpu
-runCpuRom opts rom = cpuStream
+runCpuRom opts rom = cpuStreamFrom (cpuFromRom opts rom)
+
+cpuStreamFrom :: Cpu -> S.Stream Cpu
+cpuStreamFrom cpu = S.iterate C.stepCpu cpu
+
+cpuFromRom :: MainOptions -> Rom -> Cpu
+cpuFromRom opts rom = (C.initCpu [] mem (optDebug opts))
   where intRom = map (\v -> fromIntegral(v)::Int) (L.unpack(R.prgData rom))
         prgSize = R.sizePrgRom $ R.header rom
         bank1 = zip [0x8000..] intRom
@@ -117,9 +147,6 @@ runCpuRom opts rom = cpuStream
                 then zip [0xc000..0xFFFF] intRom
                 else []
         mem = bank1 ++ bank2
-        startcpu = (C.initCpu [] mem (optDebug opts))
-        cpuStream = S.iterate C.stepCpu startcpu
-
 
 toStateStr :: Cpu -> String
 toStateStr cpu = pcv ++ " "++ sep ++

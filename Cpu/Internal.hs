@@ -25,7 +25,9 @@ module Cpu.Internal(
     cyc,
     textAt,
     debugTestStatus,
-    valueAt
+    valueAt,
+    halted,
+    resetCpu
 ) where
 
 
@@ -44,11 +46,36 @@ import Cpu.OpInfo
 data Cpu = Cpu { memory :: Memory Int Int
                , registers :: Registers
                , cyc :: Int
+               , state :: State
                , debug :: Bool
                } deriving Show
 
 type RegValue = Int
 type Cyc = Int
+
+data State = State {
+  mode :: Mode,
+  controllers :: (Controller, Controller)
+} deriving (Show)
+
+data Controller = Controller {
+  up :: Bool,
+  down :: Bool,
+  left :: Bool,
+  right :: Bool,
+  a :: Bool,
+  b :: Bool,
+  select :: Bool,
+  start :: Bool,
+  nextRead :: Int
+} deriving (Show)
+
+data Mode = Running
+          | Halted deriving (Eq, Show)
+
+halted :: Cpu -> Bool
+halted cpu = (mode (state cpu)) == Halted
+
 
 data Flag = Carry
           | Zero
@@ -129,10 +156,10 @@ updateFlag :: Flag -> Bool -> RegValue -> RegValue
 updateFlag flag True regValue = setBit regValue (flagPos flag)
 updateFlag flag False regValue = clearBit regValue (flagPos flag)
 
-resetVector :: Int
 resetVector = 0xFFFC
-stackStart = 0xFD
-stackBase = 0x100
+irqVector   = 0xFFFE
+stackStart  = 0xFD
+stackBase   = 0x100
 
 updateRegister :: RegisterType -> RegValue -> Registers -> Registers
 updateRegister Pc value regs = regs{pc=value}
@@ -163,6 +190,17 @@ sec = updateFlagOp Carry True
 sed = updateFlagOp DecMode True
 sei = updateFlagOp IrqDis True
 
+
+-- State ----------------------------------------------------------------------
+-------------------------------------------------------------------------------
+
+resetCpu cpu = cpu { registers = regs' }
+  where regs' =  regs { pc = resetAddr, status = status', sp = sp'-3 }
+        sp' = sp regs
+        regs = (registers cpu)
+        resetAddr = readMemWord resetVector mem
+        mem = memory cpu
+        status' = updateFlag IrqDis True (status regs)
 
 
 -- Arithemtic -----------------------------------------------------------------
@@ -522,7 +560,7 @@ axsOp ac size c cpu = (cpuProgress size c) (cpu { registers = regs'})
         regs = registers cpu
         currentAcc = acc regs
         currentX = x regs
-        status' = updateStatusFlagsNumericOp (status regs) x' 
+        status' = updateStatusFlagsNumericOp (status regs) x'
         status'' = updateFlag Carry (not newCarry) status'
         and = (Data.Bits..&.)
 
@@ -959,7 +997,7 @@ brkOp cpu = cpu'' { registers = regs', cyc = (cyc cpu) + 7 }
         regs  = (registers cpu)
         regs' = regs { pc = vector }
         mem = memory cpu
-        vector = toAddress (readMem 0xFFFF mem) (readMem 0xFFFE mem)
+        vector = readMemWord irqVector mem
         rp = updateFlag BrkCommand True (status regs)
 
 
@@ -970,9 +1008,9 @@ kilOp :: Cpu -> Cpu
 --        resetLow = readMem resetVector mem
 --        resetHigh = readMem (resetVector + 1) mem
 --        mem = memory cpu
-kilOp cpu = error ("KIL op halted processor" ++ line)
-  where line = (unwords $ lines text)
-        text = (textAt 0x6004 cpu)
+-- kilOp cpu = cpu { state = state', cyc = (cyc cpu) + 1 }
+--  where state' = (state cpu) { mode = Halted }
+kilOp cpu = cpu { cyc = (cyc cpu) + 1 }
 
 
 -- Op codes -------------------------------------------------------------------
@@ -1347,6 +1385,7 @@ debugPrint cpu = unwords [
     , ( opInfo opCode )
     , ( "a1: " ++ showB (fstArg cpu) )
     , ( "a2: " ++ showB (secArg cpu) )
+    , ( "res: " ++ (point resetVector mem) )
     , ( textAt 0x6004 cpu )
 --  , ( point 0x6000 mem )
 --  , ( point 0x6004 mem )
@@ -1369,9 +1408,7 @@ textAt addr cpu = map chr validBytes
 debugTestStatus cpu = readMem 0x6001 (memory cpu)
 
 point p mem = "*" ++ (showW p) ++ " = " ++ (showW val)
-  where val = (shiftL msb 8) + lsb
-        msb = (readMem (p+1) mem)
-        lsb = (readMem (p) mem)
+  where val = readMemWord p mem
 
 readMemWord p mem = (shiftL msb 8) + lsb
   where msb = (readMem (p+1) mem)
@@ -1400,10 +1437,16 @@ runCpuInteractive cpu = do
 
 
 initCpu :: [Int] -> [(Int,Int)] -> Bool -> Cpu
-initCpu program memory debug = Cpu mem regs 0 debug
+initCpu program memory debug = Cpu mem regs 0 state debug
   where mem = initMem (memory)
         regs = Registers {pc=startAddr, status=0x24, acc=0, x=0, y=0, sp=stackStart}
         startAddr = readMemWord resetVector mem
+        state = State { mode = Running, controllers = (ctrl, ctrl) }
+        ctrl = Controller {
+          up = False, down = False, left = False, right = False,
+          a = False, b = False, select = False, start = False,
+          nextRead = 0
+        }
 
 
 
