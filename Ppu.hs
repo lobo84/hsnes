@@ -30,7 +30,16 @@ type Display = M.Map (Int,Int) PixelValue
 initDisplay :: Display
 initDisplay = M.empty
         
-type RegValue = Word8
+type RegValue = Int
+
+data RegisterType = Ctrl |
+                    Mask |
+                    Status |
+                    OamAddr |
+                    OamData |
+                    Scroll |
+                    Address |
+                    Pdata
 
 data Registers = Registers {
   ctrl :: RegValue,
@@ -42,8 +51,57 @@ data Registers = Registers {
   address :: RegValue,
   pdata :: RegValue
 }
-           
 
+regMap Ctrl = 0x2000
+regMap Mask = 0x2001
+regMap Status = 0x2002
+regMap OamAddr = 0x2003
+regMap OamData = 0x2004
+regMap Scroll = 0x2005
+regMap Address = 0x2006
+regMap Pdata = 0x2007
+
+updateRegister :: RegisterType -> RegValue -> Registers -> Registers
+updateRegister Ctrl value regs = regs{ctrl=value}
+updateRegister Mask value regs = regs{mask=value}
+updateRegister Status value regs = regs{status=value}
+updateRegister OamAddr value regs = regs{oamAddr=value}
+updateRegister OamData value regs = regs{oamData=value}
+updateRegister Scroll value regs = regs{scroll=value}
+updateRegister Address value regs = regs{address=value}
+updateRegister Pdata value regs = regs{pdata=value}
+
+updateRegisters :: [(RegisterType,RegValue)] -> Registers -> Registers
+updateRegisters ((r,v):vs) regValue = updateRegisters vs (updateRegister r v regValue)
+updateRegisters [] r = r
+
+readRegister :: RegisterType -> Registers -> RegValue
+readRegister Ctrl regs = ctrl(regs)
+readRegister Mask regs = mask(regs)
+readRegister Status regs = status(regs)
+readRegister OamAddr regs = oamAddr(regs)
+readRegister OamData regs = oamData(regs)
+readRegister Scroll regs = scroll(regs)
+readRegister Address regs = address(regs)
+readRegister Pdata regs = pdata(regs)
+
+regs = [Ctrl, Mask, Status, OamAddr, OamData, Scroll, Address, Pdata]
+
+regsAddr :: [(RegisterType, Int)]
+regsAddr = map (\r -> (r,regMap r)) regs
+
+regsFromMem :: Memory Int Int -> Registers
+regsFromMem mem = updateRegisters regList initRegisters
+  where regList = map (\x -> (x,readMem (regMap x) mem )) regs
+  
+regsToMem :: Registers -> Memory Int Int -> Memory Int Int
+regsToMem rs mem = foldr (\(reg,addr) -> writeMem addr (readRegister reg rs)) mem regsAddr
+
+updatePpuRegs :: Ppu -> Memory Int Int -> Ppu
+updatePpuRegs ppu mem = ppu{registers = (regsFromMem mem)}
+
+updateMemory :: Ppu -> Memory Int Int -> Memory Int Int
+updateMemory ppu mem = regsToMem (registers ppu) mem
 
 data VramAddrInc = 
       Add1Across
@@ -278,15 +336,18 @@ nametableBase ppu = toAdress (nameTblBase (parsePPUCTRL (ctrl (registers ppu))))
 
 stepPpu :: Ppu -> Ppu
 stepPpu ppu = ppu
-  
+
+initRegisters :: Registers
+initRegisters = Registers {
+  ctrl = 0x00,
+  mask = 0x0,
+  status = 0x0,
+  scroll = 0x0,
+  address = 0x0,
+  pdata = 0x0,
+  oamAddr = 0x0,
+  oamData = 0x0
+  }
+                
 initPpu :: PpuMemory -> Ppu
-initPpu mem = Ppu Registers {
-                  ctrl = 0x00,
-                  mask = 0x0,
-                  status = 0x0,
-                  scroll = 0x0,
-                  address = 0x0,
-                  pdata = 0x0,
-                  oamAddr = 0x0,
-                  oamData = 0x0
-                  } mem 0 initDisplay
+initPpu mem = Ppu initRegisters mem 0 initDisplay
