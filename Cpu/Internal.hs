@@ -690,9 +690,9 @@ pullOp regType size c cpu = cpu { memory = mem, registers = newRegs, cyc = newC 
   where newRegs = updateRegisters [(Status, newStatus),
                                    (Pc, pc(regs)+size)] pulledRegs
         newStatus = if regType == Status
-                    then pullMergeReg oldReg pulledReg
+                    then pulledReg --pullMergeReg oldReg pulledReg
                     else updateStatusFlagsNumericOp (status(regs)) pulledReg
-        oldReg     = readRegister regType regs
+        --oldReg     = readRegister regType regs
         pulledReg  = readRegister regType pulledRegs
         pulledRegs = registers (pull regType cpu)
         mem = memory cpu
@@ -722,20 +722,12 @@ rtsOp c cpu = cpu { memory = mem, registers = newRegs, cyc = newC }
           where pulledRegs = registers(pullPc cpu)
 
 rtiOp :: Cyc -> Cpu -> Cpu
-rtiOp c cpu = cpu { memory = mem, registers = newRegs, cyc = newC }
-  where mem = memory cpu
-        newC = (cyc cpu) + c
-        statusCpu = pull Status cpu
-        oldRegs = registers cpu
-        oldReg = readRegister Status oldRegs
-        newReg = readRegister Status (registers statusCpu)
-        newStatus = (pullMergeReg oldReg newReg)
-        newRegs =  updateRegisters [(Pc, (pc(pulledRegs))), (Status, newStatus)] pulledRegs
-          where
-              pulledRegs = registers(pullPc statusCpu)
+rtiOp c cpu = cpu' { cyc = newC }
+  where newC = (cyc cpu) + c
+        cpu' = pullPc (pull Status cpu)
 
 pull :: RegisterType -> Cpu -> Cpu
-pull regType cpu = cpu { memory = mem, registers = newRegs, cyc = 0 }
+pull regType cpu = cpu { memory = mem, registers = newRegs}--, cyc = 0 }
   where stackValue = readMem (newSp + stackBase) mem
         newRegs = updateRegisters [(regType,stackValue),
                                    (Sp, newSp)] regs
@@ -746,7 +738,7 @@ pull regType cpu = cpu { memory = mem, registers = newRegs, cyc = 0 }
 
 
 pullPc :: Cpu -> Cpu
-pullPc cpu = cpu { memory = mem, registers = newRegs, cyc = 0 }
+pullPc cpu = cpu { memory = mem, registers = newRegs}--, cyc = 0 }
   where newRegs = updateRegisters [(Pc,stackValue),
                                    (Sp, spValueHigh)] regs
         stackValue = toAddress high low
@@ -991,26 +983,20 @@ rraOp ac s c cpu = (cpuProgress s c) (adcBase ac 0 (rorToMemBase ac cpu))
 
 brkOp :: Cpu -> Cpu
 brkOp cpu = cpu'' { registers = regs', cyc = (cyc cpu) + 7 }
-  where cpu'  = push pcl (push pch cpu)
-        cpu'' = push rp cpu'
-        (pch, pcl) = fromAddress (pc regs)
-        regs  = (registers cpu)
-        regs' = regs { pc = vector }
-        mem = memory cpu
-        vector = readMemWord irqVector mem
-        rp = updateFlag BrkCommand True (status regs)
+  where cpu'        = pushAddr returnPc cpu
+        cpu''       = push status' cpu'
+        returnPc    = (pc regs) + 2
+        regs        = registers cpu
+        spRegs      = registers cpu''
+        regs'       = regs { pc = vector, sp = sp spRegs }
+        mem         = memory cpu
+        vector      = readMemWord irqVector mem
+        status'     = updateFlags [(BrkCommand, True), (Bit5, True)] (status regs)
 
 
 kilOp :: Cpu -> Cpu
---kilOp cpu = cpu { registers = regs }
---  where regs = updateRegister Pc resetAddr (registers cpu)
---        resetAddr = toAddress resetHigh resetLow
---        resetLow = readMem resetVector mem
---        resetHigh = readMem (resetVector + 1) mem
---        mem = memory cpu
--- kilOp cpu = cpu { state = state', cyc = (cyc cpu) + 1 }
---  where state' = (state cpu) { mode = Halted }
-kilOp cpu = cpu { cyc = (cyc cpu) + 1 }
+kilOp cpu = error "KILLED"
+--kilOp cpu = cpu { cyc = (cyc cpu) + 1 }
 
 
 -- Op codes -------------------------------------------------------------------
@@ -1385,7 +1371,8 @@ debugPrint cpu = unwords [
     , ( opInfo opCode )
     , ( "a1: " ++ showB (fstArg cpu) )
     , ( "a2: " ++ showB (secArg cpu) )
-    , ( "res: " ++ (point resetVector mem) )
+    , ( "sp: " ++ (showHex (sp (registers cpu)) "" ))
+    , ( "brkV: " ++ (point irqVector mem) )
     , ( textAt 0x6004 cpu )
 --  , ( point 0x6000 mem )
 --  , ( point 0x6004 mem )
