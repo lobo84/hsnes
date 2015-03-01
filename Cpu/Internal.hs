@@ -699,10 +699,10 @@ pullOp regType size c cpu = cpu { memory = mem, registers = newRegs, cyc = newC 
         regs = registers cpu
         newC = (cyc cpu) +c
 
-pullMergeReg oldReg pulledReg = or (and oldReg 0x30) (and pulledReg 0xCF)
-  where
-    and = (Data.Bits..&.)
-    or = (.|.)
+--pullMergeReg oldReg pulledReg = or (and oldReg 0x30) (and pulledReg 0xCF)
+--  where
+--    and = (Data.Bits..&.)
+--    or = (.|.)
 
 jsrOp :: AddressingCalc -> OpSize -> Cyc -> Cpu -> Cpu
 jsrOp ac size c cpu = cpu { memory = newMem, registers = newRegs, cyc = newC }
@@ -722,19 +722,25 @@ rtsOp c cpu = cpu { memory = mem, registers = newRegs, cyc = newC }
           where pulledRegs = registers(pullPc cpu)
 
 rtiOp :: Cyc -> Cpu -> Cpu
-rtiOp c cpu = cpu' { cyc = newC }
-  where newC = (cyc cpu) + c
-        cpu' = pullPc (pull Status cpu)
+rtiOp c cpu = cpu' { cyc = newC, registers = newRegs }
+  where newC    = (cyc cpu) + c
+        cpu'    = pullPc (pull Status cpu)
+        regs    = registers cpu'
+        newRegs = updateRegister Status status' regs
+        status' = updateFlags [(BrkCommand, False), (Bit5, False)] (status regs)
+
 
 pull :: RegisterType -> Cpu -> Cpu
 pull regType cpu = cpu { memory = mem, registers = newRegs}--, cyc = 0 }
-  where stackValue = readMem (newSp + stackBase) mem
-        newRegs = updateRegisters [(regType,stackValue),
-                                   (Sp, newSp)] regs
-        spValue = sp(regs)
-        newSp = mod (spValue + 1) 256
-        mem = memory cpu
-        regs = registers cpu
+  where stackValue  = readMem (newSp + stackBase) mem
+        newRegs     = updateRegisters [(regType, newValue), (Sp, newSp)] regs
+        newValue    = if regType == Status
+                      then updateFlags [(BrkCommand,False),(Bit5,False)] stackValue
+                      else stackValue
+        spValue     = sp(regs)
+        newSp       = mod (spValue + 1) 256
+        mem         = memory cpu
+        regs        = registers cpu
 
 
 pullPc :: Cpu -> Cpu
