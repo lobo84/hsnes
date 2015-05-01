@@ -1,6 +1,7 @@
 module Cpu(Cpu,
            runCpu,
            stepCpu,
+           stepCpuState,
            runCpuInteractive,
            initCpu,
            resetVector,
@@ -20,4 +21,5 @@ module Cpu(Cpu,
            halted,
            resetCpu) where
 
+import Cpu.DataTypes
 import Cpu.Internal

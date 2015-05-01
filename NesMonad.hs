@@ -1,13 +1,11 @@
 module NesMonad(
-  Nes,
+  Nes(..),
   NesState,
-  startState,
-  cpu,
-  ppu
-  ) where
+) where
+
 import Rom as Rom
 import Ppu as Ppu
-import Cpu as Cpu
+import Cpu.DataTypes as Cpu
 import Mem as Mem
 import Control.Monad.State
 
@@ -17,6 +15,4 @@ data Nes = Nes {
 } deriving (Show)
 
 type NesState = StateT Nes IO
-
-startState = Nes (initCpu [] [] False) (initPpu (initPpuMem [])) -- Empty start state
 

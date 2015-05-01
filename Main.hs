@@ -201,8 +201,18 @@ initNes opts = do
   initC opts
   initP
 
+runNes :: MainOptions -> NesState ()
+runNes opts = do
+  initNes opts
+  fcpu <- runIndefiniteFromState
+  return ()
+
+
+startState = Nes (initCpu [] [] False) (initPpu (initPpuMem [])) -- Empty start state
+
 runIndefiniteState :: MainOptions -> IO ()
-runIndefiniteState opts = (runStateT (initNes opts) startState) >>= print
+runIndefiniteState opts = (runStateT (runNes opts) startState) >>= print
+
 -- runIndefiniteState opts = do
 --   cpu <- runIndefiniteFrom (cpu nes)
 --   return ()
@@ -218,17 +228,20 @@ runIndefiniteState opts = (runStateT (initNes opts) startState) >>= print
 --       return ()
 --         where romCpu = cpuFromRom opts rom
 -- 
--- runIndefiniteFrom :: Cpu -> IO Cpu
--- runIndefiniteFrom cpu = do
---   cpu' <- reactToCpu cpu
---   runIndefiniteFrom (C.stepCpu cpu')
--- 
--- reactToCpu :: Cpu -> IO Cpu
--- reactToCpu cpu = do
---       mChar <- stdin `ifReadyDo` getChar
---       let cpu' = case mChar of
---                    Just x -> resetCpu cpu
---                    _        -> cpu
---       printTextFrom 0x6004 cpu'
---       return cpu'
--- 
+runIndefiniteFromState :: NesState ()
+runIndefiniteFromState = do
+  reactToCpuState
+  C.stepCpuState
+  runIndefiniteFromState
+
+ 
+reactToCpuState :: NesState ()
+reactToCpuState = do
+  nes <- get
+  mChar <- lift (stdin `ifReadyDo` getChar)
+  let cpu' = case mChar of
+               Just x -> resetCpu (cpu nes)
+               _      -> (cpu nes)
+  lift (printTextFrom 0x6004 cpu')
+  put (nes { cpu = cpu' })
+ 
