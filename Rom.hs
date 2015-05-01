@@ -167,6 +167,12 @@ instance Monad Parse where
   (>>) = (==>&)
   fail = bail
 
+instance Applicative Parse where
+  pure = return
+  (<*>) = ap
+
+instance Functor Parse where
+  fmap = liftM
 
 toByteCount :: Int -> Word8 -> Int
 toByteCount c b = c * 1024 * (fromIntegral b)
