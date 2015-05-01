@@ -16,7 +16,7 @@ data Ppu = Ppu {
   memory :: PpuMemory,
   cycle :: Int,
   display :: Display
-}
+} deriving (Show)
 
 displayWidth = 256
 displayHeight = 240
@@ -50,7 +50,7 @@ data Registers = Registers {
   scroll :: RegValue,
   address :: RegValue,
   pdata :: RegValue
-}
+} deriving (Show)
 
 regMap Ctrl = 0x2000
 regMap Mask = 0x2001
@@ -224,12 +224,12 @@ type Nametable = [Word8]
 type Attrtable = [Word8]
 
 nametableFetch :: Ppu -> Nametable
-nametableFetch ppu = Mem.readMemRange nametable nametableEnd (memory ppu)
+nametableFetch ppu = Mem.readPpuMemRange nametable nametableEnd (memory ppu)
   where nametable = nametableBase ppu
         nametableEnd = nametable + nametableSize
 
 attributeTableFetch :: Ppu -> Attrtable
-attributeTableFetch ppu = Mem.readMemRange attributeTable attributeTableEnd (memory ppu)
+attributeTableFetch ppu = Mem.readPpuMemRange attributeTable attributeTableEnd (memory ppu)
   where attributeTable = (nametableBase ppu) + nametableEnd + 1
         attributeTableEnd = attributeTable + attributeTableSize
         nametableEnd = (nametableBase ppu) + nametableSize

@@ -3,6 +3,9 @@ import qualified Data.ByteString.Lazy as L
 
 import Rom as R
 import Cpu as C
+import Ppu as P
+import Mem as M
+import NesMonad
 import Numeric
 import Text.Printf
 import Data.Char
@@ -10,6 +13,7 @@ import System.IO
 import Data.List (find, intersperse)
 import qualified Data.Stream as S
 import Control.Applicative
+import Control.Monad.State
 import Options
 import System.Console.ANSI
 
@@ -17,6 +21,7 @@ import System.Console.ANSI
 data Mode = Run
           | CompareLog
           | RomInfo
+          | RunState
     deriving (Bounded, Enum, Show)
 
 data MainOptions = MainOptions
@@ -40,14 +45,14 @@ instance Options MainOptions where
         <*> simpleOption "debug" False
             "Enable debug trace"
 
-
 main :: IO ()
 main = runCommand $ \opts args -> do
 
   case optMode opts of
-    Run        -> runIndefinite opts
-    CompareLog -> runCompareLog opts
-    RomInfo    -> showRomInfo   opts
+    Run        -> runIndefinite      opts
+    CompareLog -> runCompareLog      opts
+    RomInfo    -> showRomInfo        opts
+    RunState   -> runIndefiniteState opts
 
 showRomInfo :: MainOptions -> IO ()
 showRomInfo opts = do
@@ -55,7 +60,6 @@ showRomInfo opts = do
   case R.parse(bytes) of
     Left errMsg -> putStr ("Parse failed:\n" ++ errMsg)
     Right rom   -> putStrLn $ show rom
-
 
 runCompareLog :: MainOptions -> IO ()
 runCompareLog opts = do
@@ -67,7 +71,6 @@ runCompareLog opts = do
       where actualLog = S.map toStateStr cpuStream
             cpuStream = runCpuRom opts rom
             nesLog = S.fromList (lines log)
-
 
 runIndefinite :: MainOptions -> IO ()
 runIndefinite opts = do
@@ -116,7 +119,6 @@ printTextFrom addr cpu = do
   else return ()
     where text = (C.textAt addr cpu)
           lineCount = length $ lines text
-
 
 compareLogs :: S.Stream String -> S.Stream String -> String
 compareLogs actual expected = pretty foundResult
@@ -173,3 +175,60 @@ romInfo :: R.Rom -> String
 romInfo rom = "Program size = " ++ prgSize ++ "\n" ++ "Rom data = " ++ romData ++ "\n"
   where prgSize = show (R.sizePrgRom (R.header rom))
         romData = show (R.prgData rom)
+
+initC :: MainOptions -> NesState ()
+initC opts = do
+  nes <- get
+  bytes <- lift (L.readFile (optRom opts))
+  case R.parse bytes of
+    Left errMsg -> lift(putStr ("Parse failed:\n" ++ errMsg))
+    Right rom   -> do
+      put (nes { cpu = cpuFromRom opts rom })
+
+--  bytes <- L.readFile (optRom opts)
+--  case R.parse bytes of
+--    Left errMsg -> putStr ("Parse failed:\n" ++ errMsg)
+--    Right rom   -> do
+--      cpu <- runIndefiniteFrom romCpu
+--      return ()
+--        where romCpu = cpuFromRom opts rom
+
+initP :: NesState ()
+initP = state $ \nes -> ((), nes { ppu = initPpu (initPpuMem []) })
+
+initNes :: MainOptions -> NesState ()
+initNes opts = do
+  initC opts
+  initP
+
+runIndefiniteState :: MainOptions -> IO ()
+runIndefiniteState opts = (runStateT (initNes opts) startState) >>= print
+-- runIndefiniteState opts = do
+--   cpu <- runIndefiniteFrom (cpu nes)
+--   return ()
+--     where nes = snd (runStateT (initNes opts) startState)
+
+-- runIndefinite :: MainOptions -> IO ()
+-- runIndefinite opts = do
+--   bytes <- L.readFile (optRom opts)
+--   case R.parse bytes of
+--     Left errMsg -> putStr ("Parse failed:\n" ++ errMsg)
+--     Right rom   -> do
+--       cpu <- runIndefiniteFrom romCpu
+--       return ()
+--         where romCpu = cpuFromRom opts rom
+-- 
+-- runIndefiniteFrom :: Cpu -> IO Cpu
+-- runIndefiniteFrom cpu = do
+--   cpu' <- reactToCpu cpu
+--   runIndefiniteFrom (C.stepCpu cpu')
+-- 
+-- reactToCpu :: Cpu -> IO Cpu
+-- reactToCpu cpu = do
+--       mChar <- stdin `ifReadyDo` getChar
+--       let cpu' = case mChar of
+--                    Just x -> resetCpu cpu
+--                    _        -> cpu
+--       printTextFrom 0x6004 cpu'
+--       return cpu'
+-- 

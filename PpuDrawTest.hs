@@ -56,7 +56,7 @@ whileEvents act = do
             act event
             whileEvents act
 
-psize = 2
+psize = 4
 
 drawDisplay :: Ppu.Display -> Surface -> IO ()
 drawDisplay ps s = sequence_ (putPixels)
@@ -89,6 +89,6 @@ main = withInit [InitEverything] $ do -- withInit calls quit for us.
 
 toPixels :: Rom -> Ppu.Display
 toPixels rom = display
-  where ppu = Ppu.initPpu (Mem.initMem (zip [0..] (L.unpack mem)))
+  where ppu = Ppu.initPpu (Mem.initPpuMem (zip [0..] (L.unpack mem)))
         mem = Rom.chrData rom
         display = Ppu.drawSprites ppu
