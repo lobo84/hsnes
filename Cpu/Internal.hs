@@ -767,6 +767,12 @@ rolOpState f size cyc = do
 rorOp :: AddressingMode -> OpSize -> Cyc -> Cpu -> Cpu
 rorOp f size cyc cpu = shiftOp ((flip rotateR8) (readFlag Carry (status(registers(cpu))))) 0 f size cyc cpu
 
+rorOpState :: AddressingMode -> OpSize -> Cyc -> NesState ()
+rorOpState f size cyc = do
+  cpu <- getCpu
+  let carry = readFlag Carry (status(registers(cpu)))
+  shiftOpState ((flip rotateR8) carry) 0 f size cyc
+
 rolToMemBase :: AddressingCalc -> Cpu -> Cpu
 rolToMemBase ac cpu = shiftMemBase ((flip rotateL8) (readFlag Carry (status(registers(cpu))))) 7 ac cpu
 
@@ -1725,6 +1731,7 @@ opCodeToFuncState 0x11 = oraOpState indirectYAddr 2 5 -- +1
 
 opCodeToFuncState 0x2a = rolOpState accumulatorArg 1 2
 
+opCodeToFuncState 0x6a = rorOpState accumulatorArg 1 2
 opCodeToFuncState 0x66 = rorToMemOpState zeroPageAddr  2 5
 opCodeToFuncState 0x76 = rorToMemOpState zeroPageXAddr 2 6
 opCodeToFuncState 0x6e = rorToMemOpState absoluteAddr  3 6
