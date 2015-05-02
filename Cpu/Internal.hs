@@ -1551,10 +1551,11 @@ brkOp cpu = cpu'' { registers = regs', cyc = (cyc cpu) + 7 }
         returnPc    = (pc regs) + 2
         regs        = registers cpu
         spRegs      = registers cpu''
-        regs'       = regs { pc = vector, sp = sp spRegs }
+        regs'       = regs { pc = vector, sp = sp spRegs, status = status'' }
         mem         = memory cpu
         vector      = readMemWord irqVector mem
         status'     = updateFlags [(BrkCommand, True), (Bit5, True)] (status regs)
+        status''    = updateFlags [(IrqDis, True)] (status regs)
 
 brkOpState :: NesState ()
 brkOpState = do
@@ -1567,7 +1568,8 @@ brkOpState = do
   let spRegs      = registers cpu''
   let mem         = memory cpu
   let vector      = readMemWord irqVector mem
-  let regs'       = regs { pc = vector, sp = sp spRegs }
+  let status''    = updateFlags [(IrqDis, True)] (status regs)
+  let regs'       = regs { pc = vector, sp = (sp spRegs), status = status''}
   let cpu''' = cpu'' { registers = regs', cyc = (cyc cpu) + 7 }
   putCpu cpu'''
 
