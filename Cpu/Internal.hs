@@ -398,7 +398,12 @@ readMemValue ac cpu = readMem addr (memory cpu)
 
 
 adcOp :: AddressingCalc -> OpSize -> Cyc -> Int -> Cpu -> Cpu
-adcOp ac s c p cpu = (cpuProgress s c) (adcBase ac p cpu)
+adcOp ac s c p cpu =  (cpuProgress s c) (adcBase ac p cpu)
+
+adcOpState :: AddressingCalc -> OpSize -> Cyc -> Int -> NesState ()
+adcOpState ac s c p = do
+  adcBaseState ac p
+  progressCpu s c
 
 adcBase :: AddressingCalc -> Int -> Cpu -> Cpu
 adcBase ac penalty cpu = cpu { memory = mem, registers = newRegs, cyc = newC }
@@ -417,6 +422,26 @@ adcBase ac penalty cpu = cpu { memory = mem, registers = newRegs, cyc = newC }
         regs = registers cpu
         newC = (cyc cpu) + (if cross then penalty else 0)
 
+adcBaseState :: AddressingCalc -> Int -> NesState ()
+adcBaseState ac penalty = do
+  cpu <- getCpu
+  let mem = memory cpu
+  let regs = registers cpu
+  let acc1 = acc regs
+  let (ea, cross) = ac cpu
+  let acc2 = readMem ea mem
+  let oldCarryFlag = readFlag Carry (status regs)
+  let oldCarryInt = if oldCarryFlag then 1 else 0
+  let carryFlag = addWillCarry acc1 acc2 oldCarryFlag
+  let overflFlag = addWillOverflow acc1 acc2 oldCarryFlag
+  let newAcc = add8 acc1 acc2 oldCarryInt
+  let newAccStatus = updateStatusFlagsNumericOp (status(regs)) newAcc
+  let newStatus = updateFlags [(Carry,carryFlag), (OverFlow,overflFlag)] newAccStatus
+  let newRegs = regs {acc=newAcc, status=newStatus}
+  let newC = (cyc cpu) + (if cross then penalty else 0)
+  let cpu' = cpu { registers = newRegs, cyc = newC }
+  putCpu cpu'
+  
 ldOp :: [RegisterType] -> AddressingCalc -> OpSize -> Cyc -> Int -> Cpu -> Cpu
 ldOp rTypes ac size c penalty cpu = cpu { memory = mem, registers = newRegs, cyc = newC }
   where newRegs = updateRegisters (newValueRegs ++ [(Pc,newPc), (Status,newStatus)]) regs
@@ -482,6 +507,19 @@ bitBase aluOp ac cpu = cpu { registers = newRegs, cyc = (cyc cpu) }
         newStatus = updateStatusFlagsNumericOp (status(regs)) newAcc
         regs = registers cpu
 
+bitBaseState :: AccFuncTwoArg -> AddressingCalc -> NesState ()
+bitBaseState aluOp ac = do
+  cpu <- getCpu
+  lift (print "BitState")
+  let regs = registers cpu
+  let acc1 = acc(regs)
+  let acc2 = readMemValue ac cpu
+  let newAcc = (aluOp) acc1 acc2
+  let newStatus = updateStatusFlagsNumericOp (status(regs)) newAcc
+  let newRegs = regs { acc = newAcc, status = newStatus }
+  let cpu' = cpu { registers = newRegs }
+  putCpu cpu'
+
 shiftOp :: AccFuncOneArg -> BitPos -> AddressingMode -> OpSize -> Cyc -> Cpu -> Cpu
 shiftOp aluOp bitPos f size c cpu = cpu { memory = mem, registers = newRegs, cyc = newC }
   where newRegs = regs {acc=newAcc, pc=newPc, status=newStatus}
@@ -495,6 +533,22 @@ shiftOp aluOp bitPos f size c cpu = cpu { memory = mem, registers = newRegs, cyc
         mem = memory cpu
         regs = registers cpu
         newC = (cyc cpu) + c
+
+shiftOpState :: AccFuncOneArg -> BitPos -> AddressingMode -> OpSize -> Cyc -> NesState ()
+shiftOpState aluOp bitPos f size c = do
+  cpu <- getCpu
+  let regs = registers cpu
+  let currentVal = (f cpu)
+  let carryFlag = testBit (currentVal) bitPos
+  let newAccVal = (aluOp currentVal)
+  let newAcc = mod newAccVal 256
+  let newPc = pc(regs) + size
+  let newAccStatus = updateStatusFlagsNumericOp (status(regs)) newAcc
+  let newStatus = updateFlag Carry carryFlag newAccStatus
+  let newRegs = regs {acc=newAcc, pc=newPc, status=newStatus}
+  let newC = (cyc cpu) + c
+  let cpu' = cpu { registers = newRegs, cyc = newC }
+  putCpu cpu'
 
 shiftOpMem :: AccFuncOneArg -> BitPos -> AddressingCalc -> OpSize -> Cyc -> Cpu -> Cpu
 shiftOpMem aluOp bitPos ac s c cpu = (cpuProgress s c) (shiftMemBase aluOp bitPos ac cpu)
@@ -512,6 +566,21 @@ shiftMemBase aluOp bitPos ac cpu = cpu { memory = newMem, registers = newRegs, c
         newMem = writeMem addr newValue mem
         regs = registers cpu
 
+shiftMemBaseState :: AccFuncOneArg -> BitPos -> AddressingCalc -> NesState ()
+shiftMemBaseState aluOp bitPos ac = do
+  cpu <- getCpu
+  let regs = registers cpu
+  let mem = memory cpu
+  let (addr, _) = ac cpu
+  let currentVal = (readMem addr mem)
+  let carryFlag = testBit (currentVal) bitPos
+  let newValue = mod (aluOp currentVal) 256
+  let newValueStatus = updateStatusFlagsNumericOp (status(regs)) newValue
+  let newStatus = updateFlag Carry carryFlag newValueStatus
+  let newRegs = updateRegisters [(Status, newStatus)] regs
+  let newMem = writeMem addr newValue mem
+  let cpu' = cpu { memory = newMem, registers = newRegs }
+  putCpu cpu'
 
 transferOp :: RegisterType -> RegisterType -> OpSize -> Cyc -> Cpu -> Cpu
 transferOp from to size c cpu = cpu { memory = mem, registers = newRegs, cyc = newC }
@@ -608,29 +677,61 @@ shBase ac regType cpu = cpu { memory = mem'}
 andBase :: AddressingCalc -> Cpu -> Cpu
 andBase = bitBase (Data.Bits..&.)
 
+andBaseState :: AddressingCalc -> NesState ()
+andBaseState = bitBaseState (Data.Bits..&.)
+
 andOp :: AddressingCalc -> OpSize -> Cyc -> Cpu -> Cpu
 andOp ac s c cpu = (cpuProgress s c) (andBase ac cpu)
+
+andOpState :: AddressingCalc -> OpSize -> Cyc -> NesState ()
+andOpState ac s c = do 
+  andBaseState ac
+  progressCpu s c
 
 eorBase :: AddressingCalc -> Cpu -> Cpu
 eorBase = bitBase xor
 
+eorBaseState :: AddressingCalc -> NesState ()
+eorBaseState = bitBaseState xor
+
 eorOp :: AddressingCalc -> OpSize -> Cyc -> Cpu -> Cpu
 eorOp ac s c cpu = (cpuProgress s c) (eorBase ac cpu)
+
+eorOpState :: AddressingCalc -> OpSize -> Cyc -> NesState ()
+eorOpState ac s c = do
+  eorBaseState ac
+  progressCpu s c
 
 oraBase :: AddressingCalc -> Cpu -> Cpu
 oraBase = bitBase (.|.)
 
+oraBaseState :: AddressingCalc -> NesState ()
+oraBaseState = bitBaseState (.|.)
+
 oraOp :: AddressingCalc -> OpSize -> Cyc -> Cpu -> Cpu
 oraOp ac s c cpu = (cpuProgress s c) (oraBase ac cpu)
 
+oraOpState :: AddressingCalc -> OpSize -> Cyc -> NesState ()
+oraOpState ac s c = do
+  oraBaseState ac
+  progressCpu s c
+  
 aslOp :: AddressingMode -> OpSize -> Cyc -> Cpu -> Cpu
 aslOp = shiftOp ((flip shiftL) 1) 7
 
 aslToMemBase :: AddressingCalc -> Cpu -> Cpu
 aslToMemBase = shiftMemBase ((flip shiftL) 1) 7
 
+aslToMemBaseState :: AddressingCalc -> NesState ()
+aslToMemBaseState = shiftMemBaseState ((flip shiftL) 1) 7
+
 aslToMemOp :: AddressingCalc -> OpSize -> Cyc -> Cpu -> Cpu
 aslToMemOp ac s c cpu = (cpuProgress s c) (aslToMemBase ac cpu)
+
+aslToMemOpState :: AddressingCalc -> OpSize -> Cyc -> NesState ()
+aslToMemOpState ac s c = do
+  aslToMemBaseState ac
+  progressCpu s c
 
 ancOp :: AddressingCalc -> OpSize -> Cyc -> Cpu -> Cpu
 ancOp ac s c cpu = (cpuProgress s c) (cpu' { registers = regs' })
@@ -644,6 +745,9 @@ ancOp ac s c cpu = (cpuProgress s c) (cpu' { registers = regs' })
 lsrOp :: AddressingMode -> OpSize -> Cyc -> Cpu -> Cpu
 lsrOp = shiftOp ((flip shiftR) 1) 0
 
+lsrOpState :: AddressingMode -> OpSize -> Cyc -> NesState ()
+lsrOpState = shiftOpState ((flip shiftR) 1) 0
+
 lsrToMemBase :: AddressingCalc -> Cpu -> Cpu
 lsrToMemBase = shiftMemBase ((flip shiftR) 1) 0
 
@@ -652,6 +756,13 @@ lsrToMemOp ac s c cpu = (cpuProgress s c) (lsrToMemBase ac cpu)
 
 rolOp :: AddressingMode -> OpSize -> Cyc -> Cpu -> Cpu
 rolOp f size cyc cpu = shiftOp ((flip rotateL8) (readFlag Carry (status(registers(cpu))))) 7 f size cyc cpu
+
+rolOpState :: AddressingMode -> OpSize -> Cyc -> NesState ()
+rolOpState f size cyc = do
+  cpu <- getCpu
+  let carry = readFlag Carry (status(registers(cpu)))
+  shiftOpState ((flip rotateL8) carry) 7 f size cyc
+
 
 rorOp :: AddressingMode -> OpSize -> Cyc -> Cpu -> Cpu
 rorOp f size cyc cpu = shiftOp ((flip rotateR8) (readFlag Carry (status(registers(cpu))))) 0 f size cyc cpu
@@ -665,8 +776,19 @@ rolToMemOp ac s c cpu = (cpuProgress s c) (rolToMemBase ac cpu)
 rorToMemBase :: AddressingCalc -> Cpu -> Cpu
 rorToMemBase ac cpu = shiftMemBase ((flip rotateR8) (readFlag Carry (status(registers(cpu))))) 0 ac cpu
 
+rorToMemBaseState :: AddressingCalc -> NesState ()
+rorToMemBaseState ac = do
+  cpu <- getCpu
+  let carry = readFlag Carry (status(registers(cpu)))
+  shiftMemBaseState ((flip rotateR8) carry) 0 ac
+
 rorToMemOp :: AddressingCalc -> OpSize -> Cyc -> Cpu -> Cpu
 rorToMemOp ac s c cpu = (cpuProgress s c) (rorToMemBase ac cpu)
+
+rorToMemOpState :: AddressingCalc -> OpSize -> Cyc -> NesState ()
+rorToMemOpState ac s c = do
+  rorToMemBaseState ac
+  progressCpu s c
 
 rotateR8 :: Int -> Bool -> Int
 rotateR8 value oldCarry = newValue
@@ -692,6 +814,20 @@ pushOp regType size c cpu = push pushValue (cpu { memory = mem, registers = newR
         newRegs = updateRegister Pc newPc regs
         newC = (cyc cpu) + c
 
+pushOpState :: RegisterType -> OpSize -> Cyc -> NesState ()
+pushOpState regType size c = do
+  cpu <- getCpu
+  let regs = registers cpu
+  let newPc = (pc regs) + size
+  let newRegs = updateRegister Pc newPc regs
+  let regValue = readRegister regType newRegs
+  let pushValue = if regType == Status
+                  then updateFlags [(BrkCommand,True),(Bit5,True)] regValue
+                  else regValue
+  let newC = (cyc cpu) + c
+  let cpu' = push pushValue (cpu { registers = newRegs, cyc = newC })
+  putCpu cpu'
+
 pullOp :: RegisterType -> OpSize -> Cyc -> Cpu -> Cpu
 pullOp regType size c cpu = cpu { memory = mem, registers = newRegs, cyc = newC }
   where newRegs = updateRegisters [(Status, newStatus),
@@ -705,6 +841,21 @@ pullOp regType size c cpu = cpu { memory = mem, registers = newRegs, cyc = newC 
         mem = memory cpu
         regs = registers cpu
         newC = (cyc cpu) +c
+
+pullOpState :: RegisterType -> OpSize -> Cyc -> NesState ()
+pullOpState regType size c = do
+  cpu <- getCpu
+  let regs = registers cpu
+  let pulledRegs = registers (pull regType cpu)
+  let pulledReg  = readRegister regType pulledRegs
+  let newStatus = if regType == Status
+                  then pulledReg --pullMergeReg oldReg pulledReg
+                  else updateStatusFlagsNumericOp (status(regs)) pulledReg
+  let newRegs = updateRegisters [(Status, newStatus),
+                                 (Pc, pc(regs)+size)] pulledRegs
+  let newC = (cyc cpu) +c
+  let cpu' = cpu { registers = newRegs, cyc = newC }
+  putCpu cpu'
 
 --pullMergeReg oldReg pulledReg = or (and oldReg 0x30) (and pulledReg 0xCF)
 --  where
@@ -868,6 +1019,24 @@ cmpOp f regType size c cpu = cpu { memory = mem, registers = newRegs, cyc = newC
         regs = registers cpu
         newC = (cyc cpu) + c
 
+cmpOpState :: AddressingMode -> RegisterType -> OpSize -> Cyc -> NesState ()
+cmpOpState f regType size c = do
+  cpu <- getCpu
+  let regs = registers cpu
+  let memValue = f cpu
+  let regValue = readRegister regType regs
+  let carry = regValue >= memValue
+  let zero = regValue == memValue
+  let negative = testBit (sub8 regValue memValue) 7
+  let newStatus = updateFlags [(Carry,carry),
+                               (Neg,negative),
+                               (Zero,zero)] (status(regs))
+  let newRegs = updateRegisters [(Status,newStatus),
+                                 (Pc,pc(regs)+size)] regs
+  let newC = (cyc cpu) + c
+  let cpu' = cpu { registers = newRegs, cyc = newC }
+  putCpu cpu'
+
 bneOp :: AddressingMode -> OpSize -> Cpu -> Cpu
 bneOp f size cpu = cpu { memory = mem, registers = newRegs, cyc = 0 }
   where newRegs = updateRegister Pc newPc regs
@@ -994,9 +1163,35 @@ bitTstOp ac size c cpu = cpu { memory = mem, registers = newRegs, cyc = newC }
         regs = registers cpu
         newC = (cyc cpu) + c
 
+bitTstOpState :: AddressingCalc -> OpSize -> Cyc -> NesState ()
+bitTstOpState ac size c = do
+  cpu <- getCpu
+  let mem = memory cpu
+  let regs = registers cpu
+  let (addr, _) = ac cpu
+  let memArg = readMem addr mem
+  let masked = (Data.Bits..&.) (acc regs) memArg
+  let newZero = masked == 0
+  let newOverflow = readFlag OverFlow memArg
+  let newNegative = readFlag Neg memArg
+  let newStatus = updateFlags [(OverFlow,newOverflow),
+                                 (Neg, newNegative),
+                                 (Zero, newZero)] (status regs)
+  let newPc = (pc regs) + size
+  let newRegs = updateRegisters [(Status,newStatus),
+                                 (Pc,newPc)] regs
+  let newC = (cyc cpu) + c
+  let cpu' = cpu { registers = newRegs, cyc = newC }
+  putCpu cpu'
+
 
 sbcOp :: AddressingCalc -> OpSize -> Cyc -> Cpu -> Cpu
 sbcOp ac s c cpu = (cpuProgress s c) (sbcBase ac cpu)
+
+sbcOpState :: AddressingCalc -> OpSize -> Cyc -> NesState ()
+sbcOpState ac s c = do
+  sbcBaseState ac
+  progressCpu s c
 
 cpuProgress :: OpSize -> Cyc -> Cpu -> Cpu
 cpuProgress s c cpu = cpu { memory = mem', registers = regs', cyc = cycs' }
@@ -1009,10 +1204,12 @@ cpuProgress s c cpu = cpu { memory = mem', registers = regs', cyc = cycs' }
 progressCpu :: OpSize -> Cyc -> NesState ()
 progressCpu s c = do
   cpu <- getCpu
+  lift (putStr "progressCpu ")
   let regs  = registers cpu
   let pc'   = (pc regs) + s
   let regs' = regs { pc = pc' }
   let cycs' = (cyc cpu) + c
+  lift (print cycs')
   let cpu' = cpu { registers = regs', cyc = cycs' }
   putCpu cpu'
 
@@ -1031,14 +1228,31 @@ sbcBase ac cpu = cpu { memory = mem, registers = newRegs, cyc = (cyc cpu) }
         mem = memory cpu
         regs = registers cpu
 
+sbcBaseState :: AddressingCalc -> NesState ()
+sbcBaseState ac = do 
+  cpu <- getCpu
+  let regs = registers cpu
+  let acc1 = acc(regs)
+  let acc2 = readMemValue ac cpu
+  let oldCarryFlag = readFlag Carry (status regs)
+  let oldCarryInt = if oldCarryFlag then 1 else 0
+  let newAcc = sub8c acc1 acc2 oldCarryInt
+  let carryFlag = subWillCarry acc1 acc2 oldCarryFlag
+  let overflFlag = subWillOverflow acc1 acc2 oldCarryFlag
+  let newAccStatus = updateStatusFlagsNumericOp (status(regs)) newAcc
+  let newStatus = updateFlags [(Carry,not carryFlag), (OverFlow,overflFlag)] newAccStatus
+  let newRegs = regs {acc=newAcc, status=newStatus}
+  let cpu' = cpu { registers = newRegs }
+  putCpu cpu'
 
 incMemOp :: AddressingCalc -> Int -> OpSize -> Cyc -> Cpu -> Cpu
 incMemOp ac v s c cpu = (cpuProgress s c) (incMemBase ac v cpu)
 
 incMemOpState :: AddressingCalc -> Int -> OpSize -> Cyc -> NesState ()
 incMemOpState ac v s c = do
+  incMemory ac v
+  lift (print "incMemOpState") 
   progressCpu s c
-  incMemory ac v 
 
 incMemBase :: AddressingCalc -> Int -> Cpu -> Cpu
 incMemBase ac value cpu = cpu { memory = newMem, registers = newRegs, cyc = (cyc cpu) }
@@ -1473,12 +1687,55 @@ opCodeToFuncState 0x38 = secState
 opCodeToFuncState 0xF8 = sedState
 opCodeToFuncState 0x78 = seiState
 
-opCodeToFuncState 0xaa = transferOpState Acc X   1 2
-opCodeToFuncState 0xa8 = transferOpState Acc Y   1 2
-opCodeToFuncState 0xba = transferOpState Sp  X   1 2
-opCodeToFuncState 0x8a = transferOpState X   Acc 1 2
-opCodeToFuncState 0x9a = transferOpState X   Sp  1 2
-opCodeToFuncState 0x98 = transferOpState Y   Acc 1 2
+opCodeToFuncState 0x69 = adcOpState immediateAddr 2 2 0
+opCodeToFuncState 0x65 = adcOpState zeroPageAddr  2 3 0
+opCodeToFuncState 0x75 = adcOpState zeroPageXAddr 2 4 0
+opCodeToFuncState 0x6d = adcOpState absoluteAddr  3 4 0
+opCodeToFuncState 0x7d = adcOpState absoluteXAddr 3 4 1
+opCodeToFuncState 0x79 = adcOpState absoluteYAddr 3 4 1
+opCodeToFuncState 0x61 = adcOpState indirectXAddr 2 6 0
+opCodeToFuncState 0x71 = adcOpState indirectYAddr 2 5 1
+
+opCodeToFuncState 0x29 = andOpState immediateAddr 2 2
+opCodeToFuncState 0x25 = andOpState zeroPageAddr  2 3
+opCodeToFuncState 0x35 = andOpState zeroPageXAddr 2 4
+opCodeToFuncState 0x2d = andOpState absoluteAddr  3 4
+opCodeToFuncState 0x3d = andOpState absoluteXAddr 3 4 -- +1
+opCodeToFuncState 0x39 = andOpState absoluteYAddr 3 4 -- +1
+opCodeToFuncState 0x21 = andOpState indirectXAddr 2 6
+opCodeToFuncState 0x31 = andOpState indirectYAddr 2 5 -- +1
+
+opCodeToFuncState 0x49 = eorOpState immediateAddr 2 2
+opCodeToFuncState 0x45 = eorOpState zeroPageAddr  2 3
+opCodeToFuncState 0x55 = eorOpState zeroPageXAddr 2 4
+opCodeToFuncState 0x4d = eorOpState absoluteAddr  3 4
+opCodeToFuncState 0x5d = eorOpState absoluteXAddr 3 4 -- +1
+opCodeToFuncState 0x59 = eorOpState absoluteYAddr 3 4 -- +1
+opCodeToFuncState 0x41 = eorOpState indirectXAddr 2 6
+opCodeToFuncState 0x51 = eorOpState indirectYAddr 2 5 -- +1
+
+opCodeToFuncState 0x09 = oraOpState immediateAddr 2 2
+opCodeToFuncState 0x05 = oraOpState zeroPageAddr  2 3
+opCodeToFuncState 0x15 = oraOpState zeroPageXAddr 2 4
+opCodeToFuncState 0x0d = oraOpState absoluteAddr  3 4
+opCodeToFuncState 0x1d = oraOpState absoluteXAddr 3 4 -- +1
+opCodeToFuncState 0x19 = oraOpState absoluteYAddr 3 4 -- +1
+opCodeToFuncState 0x01 = oraOpState indirectXAddr 2 6
+opCodeToFuncState 0x11 = oraOpState indirectYAddr 2 5 -- +1
+
+opCodeToFuncState 0x2a = rolOpState accumulatorArg 1 2
+
+opCodeToFuncState 0x66 = rorToMemOpState zeroPageAddr  2 5
+opCodeToFuncState 0x76 = rorToMemOpState zeroPageXAddr 2 6
+opCodeToFuncState 0x6e = rorToMemOpState absoluteAddr  3 6
+opCodeToFuncState 0x7e = rorToMemOpState absoluteXAddr 3 7
+
+opCodeToFuncState 0x06 = aslToMemOpState zeroPageAddr  2 5
+opCodeToFuncState 0x16 = aslToMemOpState zeroPageXAddr 2 6
+opCodeToFuncState 0x0e = aslToMemOpState absoluteAddr  3 6
+opCodeToFuncState 0x1e = aslToMemOpState absoluteXAddr 3 7
+
+opCodeToFuncState 0x4a = lsrOpState accumulatorArg 1 2
 
 opCodeToFuncState 0xa9 = ldOpState [Acc] immediateAddr 2 2 0
 opCodeToFuncState 0xa5 = ldOpState [Acc] zeroPageAddr  2 3 0
@@ -1534,12 +1791,39 @@ opCodeToFuncState 0x30 = branchOpState relative isPositiveState         2
 opCodeToFuncState 0x70 = branchOpState relative isOverflowState         2
 opCodeToFuncState 0x50 = branchOpState relative (not . isOverflowState) 2
 
-opCodeToFuncState 0x4c = jmpOpState absoluteAddr 3 3
-opCodeToFuncState 0x6c = jmpOpState indirectAddr 3 5
+opCodeToFuncState 0xaa = transferOpState Acc X   1 2
+opCodeToFuncState 0xa8 = transferOpState Acc Y   1 2
+opCodeToFuncState 0xba = transferOpState Sp  X   1 2
+opCodeToFuncState 0x8a = transferOpState X   Acc 1 2
+opCodeToFuncState 0x9a = transferOpState X   Sp  1 2
+opCodeToFuncState 0x98 = transferOpState Y   Acc 1 2
+
+opCodeToFuncState 0x48 = pushOpState Acc    1 3
+opCodeToFuncState 0x08 = pushOpState Status 1 3
+
+opCodeToFuncState 0x68 = pullOpState Acc    1 4
+opCodeToFuncState 0x28 = pullOpState Status 1 4
 
 opCodeToFuncState 0x20 = jsrOpState absoluteAddr 3 6
 opCodeToFuncState 0x60 = rtsOpState 6
 opCodeToFuncState 0x40 = rtiOpState 6
+
+opCodeToFuncState 0xc9 = cmpOpState immediate Acc 2 2
+opCodeToFuncState 0xc5 = cmpOpState zeroPage  Acc 2 3
+opCodeToFuncState 0xd5 = cmpOpState zeroPageX Acc 2 4
+opCodeToFuncState 0xcd = cmpOpState absolute  Acc 3 4
+opCodeToFuncState 0xdd = cmpOpState absoluteX Acc 3 4 -- +1
+opCodeToFuncState 0xd9 = cmpOpState absoluteY Acc 3 4 -- +1
+opCodeToFuncState 0xc1 = cmpOpState indirectX Acc 2 6
+opCodeToFuncState 0xd1 = cmpOpState indirectY Acc 2 5 -- +1
+
+opCodeToFuncState 0xe0 = cmpOpState immediate X 2 2
+opCodeToFuncState 0xe4 = cmpOpState zeroPage  X 2 3
+opCodeToFuncState 0xec = cmpOpState absolute  X 3 4
+
+opCodeToFuncState 0xc0 = cmpOpState immediate Y 2 2
+opCodeToFuncState 0xc4 = cmpOpState zeroPage  Y 2 3
+opCodeToFuncState 0xcc = cmpOpState absolute  Y 3 4
 
 opCodeToFuncState 0xe6 = incMemOpState zeroPageAddr  1 2 5
 opCodeToFuncState 0xf6 = incMemOpState zeroPageXAddr 1 2 6
@@ -1555,6 +1839,23 @@ opCodeToFuncState 0xe8 = incOpState X   1  1 2
 opCodeToFuncState 0xc8 = incOpState Y   1  1 2
 opCodeToFuncState 0xca = incOpState X (-1) 1 2
 opCodeToFuncState 0x88 = incOpState Y (-1) 1 2
+
+opCodeToFuncState 0x4c = jmpOpState absoluteAddr 3 3
+opCodeToFuncState 0x6c = jmpOpState indirectAddr 3 5
+
+opCodeToFuncState 0x24 = bitTstOpState zeroPageAddr  2 3
+opCodeToFuncState 0x2c = bitTstOpState absoluteAddr  3 4
+
+opCodeToFuncState 0xeb = sbcOpState immediateAddr  2 2
+opCodeToFuncState 0xe9 = sbcOpState immediateAddr  2 2
+opCodeToFuncState 0xe5 = sbcOpState zeroPageAddr   2 3
+opCodeToFuncState 0xf5 = sbcOpState zeroPageXAddr  2 4
+opCodeToFuncState 0xed = sbcOpState absoluteAddr   3 4
+opCodeToFuncState 0xfd = sbcOpState absoluteXAddr  3 4 -- +1
+opCodeToFuncState 0xf9 = sbcOpState absoluteYAddr  3 4 -- +1
+opCodeToFuncState 0xe1 = sbcOpState indirectXAddr  2 6
+opCodeToFuncState 0xf1 = sbcOpState indirectYAddr  2 5 -- +1
+
 
 
 opCodeToFuncState opCode = error ("op code " ++ (showHex(opCode) "") ++ " Not implemented")
@@ -1647,6 +1948,7 @@ nextOpCodeState = do
   let mem = memory cpu
   let regs = registers cpu
   let val = readMem (pc(regs)) mem
+  lift (print ("Next opCode " ++ (showHex val "")))
   return val
 
 showCpu :: Cpu -> String
