@@ -690,12 +690,39 @@ shaOp ac size c cpu = (cpuProgress size c) cpu { memory = mem' }
         newHigh = if pageCrossed then val else high
         and = (Data.Bits..&.)
 
+shaOpState :: AddressingCalc -> OpSize -> Cyc -> NesState ()
+shaOpState ac s c = do
+  cpu <- getCpu
+  let and = (Data.Bits..&.)
+  let regs = registers cpu
+  let currentAcc = acc regs
+  let currentX = x regs
+  let (addr, pageCrossed) = ac cpu
+  let (high, low) = fromAddress addr
+  let val = and currentAcc (and currentX (high + 1))
+  let mem = memory cpu
+  let newHigh = if pageCrossed then val else high
+  let storeAddr = toAddress newHigh low
+  let mem' = writeMem storeAddr val mem
+  let cpu' = cpu { memory = mem' }
+  putCpu cpu'
+  progressCpu s c
 
 shxOp :: AddressingCalc -> OpSize -> Cyc -> Cpu -> Cpu
 shxOp ac size c cpu = (cpuProgress size c) (shBase ac X cpu)
 
+shxOpState :: AddressingCalc -> OpSize -> Cyc -> NesState ()
+shxOpState ac s c = do
+  shBaseState ac X
+  progressCpu s c
+
 shyOp :: AddressingCalc -> OpSize -> Cyc -> Cpu -> Cpu
 shyOp ac size c cpu = (cpuProgress size c) (shBase ac Y cpu)
+
+shyOpState :: AddressingCalc -> OpSize -> Cyc -> NesState ()
+shyOpState ac s c = do
+  shBaseState ac Y
+  progressCpu s c
 
 shBase :: AddressingCalc -> RegisterType -> Cpu -> Cpu
 shBase ac regType cpu = cpu { memory = mem'}
@@ -709,6 +736,22 @@ shBase ac regType cpu = cpu { memory = mem'}
         mem' = writeMem storeAddr val mem
         newHigh = if pageCrossed then val else high
         and = (Data.Bits..&.)
+
+shBaseState :: AddressingCalc -> RegisterType -> NesState ()
+shBaseState ac regType = do
+  cpu <- getCpu
+  let regs = registers cpu
+  let and = (Data.Bits..&.)
+  let currentRegVal = readRegister regType regs
+  let (addr, pageCrossed) = ac cpu
+  let (high, low) = fromAddress addr
+  let val = and currentRegVal (high + 1)
+  let mem = memory cpu
+  let newHigh = if pageCrossed then val else high
+  let storeAddr = toAddress newHigh low
+  let mem' = writeMem storeAddr val mem
+  let cpu' = cpu { memory = mem' }
+  putCpu cpu'
 
 andBase :: AddressingCalc -> Cpu -> Cpu
 andBase = bitBase (Data.Bits..&.)
@@ -1513,6 +1556,20 @@ brkOp cpu = cpu'' { registers = regs', cyc = (cyc cpu) + 7 }
         vector      = readMemWord irqVector mem
         status'     = updateFlags [(BrkCommand, True), (Bit5, True)] (status regs)
 
+brkOpState :: NesState ()
+brkOpState = do
+  cpu <- getCpu
+  let regs        = registers cpu
+  let returnPc    = (pc regs) + 2
+  let cpu'        = pushAddr returnPc cpu
+  let status'     = updateFlags [(BrkCommand, True), (Bit5, True)] (status regs)
+  let cpu''       = push status' cpu'
+  let spRegs      = registers cpu''
+  let mem         = memory cpu
+  let vector      = readMemWord irqVector mem
+  let regs'       = regs { pc = vector, sp = sp spRegs }
+  let cpu''' = cpu'' { registers = regs', cyc = (cyc cpu) + 7 }
+  putCpu cpu'''
 
 kilOp :: Cpu -> Cpu
 kilOp cpu = error "KILLED"
@@ -1865,7 +1922,8 @@ nop_absolute_xState = nopState absoluteXAddr 3 4
 
 opCodeToFuncState :: OpCode -> NesState ()
 
---opCodeToFuncState 0x00 = brkOp
+opCodeToFuncState 0x00 = brkOpState
+
 opCodeToFuncState 0x18 = clcState
 opCodeToFuncState 0xD8 = cldState
 opCodeToFuncState 0x58 = cliState
@@ -2144,6 +2202,12 @@ opCodeToFuncState 0xff = iscOpState absoluteXAddr 3 7
 
 opCodeToFuncState 0x0b = ancOpState immediateAddr 2 2
 opCodeToFuncState 0x2b = ancOpState immediateAddr 2 2
+
+opCodeToFuncState 0x93 = shaOpState indirectYAddr 2 2 -- cyc unknown
+opCodeToFuncState 0x9f = shaOpState absoluteYAddr 3 2 -- cyc unknown
+
+opCodeToFuncState 0x9c = shyOpState absoluteXAddr 3 2 -- cyc unknown
+opCodeToFuncState 0x9e = shxOpState absoluteYAddr 3 2 -- cyc unknown
 
 opCodeToFuncState 0x4b = alrOpState immediateAddr 2 2
 
